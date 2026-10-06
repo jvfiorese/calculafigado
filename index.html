@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CalculaFígado</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: uma coluna de ferramenta; entrada no topo, escores em grade que vira lista no celular, valores lidos ao final */
+:root {
+  --bg: #f3f5f2;
+  --surface: #ffffff;
+  --ink: #17221d;
+  --muted: #5b6a62;
+  --line: #d6ddd7;
+  --accent: #2d6a4f;
+  --accent-soft: #e1eee6;
+  --ok: #2f7d4a; --ok-bg: #e3f2e7;
+  --warn: #9a6a00; --warn-bg: #fbf0d4;
+  --crit: #b0362d; --crit-bg: #f8e1de;
+  --na-bg: #eceeed;
+  --font-ui: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111814; --surface: #19221d; --ink: #e4ece6; --muted: #98a89f; --line: #2c3a32;
+    --accent: #6fc39a; --accent-soft: #1f3a2c;
+    --ok: #7fd49c; --ok-bg: #1d3626; --warn: #f0c560; --warn-bg: #3a2f12; --crit: #f19a90; --crit-bg: #42201c; --na-bg: #222c26;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111814; --surface: #19221d; --ink: #e4ece6; --muted: #98a89f; --line: #2c3a32;
+  --accent: #6fc39a; --accent-soft: #1f3a2c;
+  --ok: #7fd49c; --ok-bg: #1d3626; --warn: #f0c560; --warn-bg: #3a2f12; --crit: #f19a90; --crit-bg: #42201c; --na-bg: #222c26;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-size: 1.6rem; margin: 0; letter-spacing: -0.01em; }
+h1 span { color: var(--accent); }
+.sub { color: var(--muted); margin: 0; font-size: 0.9rem; }
+h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; font-weight: 700; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+textarea { width: 100%; min-height: 150px; resize: vertical; font-family: var(--font-num); font-size: 13px; line-height: 1.5; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+textarea:focus, input:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.between { justify-content: space-between; }
+button, .btn { font: inherit; font-weight: 700; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+button:hover { border-color: var(--accent); }
+.hint { color: var(--muted); font-size: 0.85rem; }
+.example-tag { display: inline-block; font-size: 0.75rem; font-weight: 700; color: var(--warn); background: var(--warn-bg); padding: 2px 8px; border-radius: 99px; }
+
+/* datas */
+.dates { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.date { flex: none; text-align: left; padding: 8px 12px; font-weight: 400; }
+.date b { display: block; font-family: var(--font-num); font-weight: 600; font-size: 0.95rem; }
+.date small { color: var(--muted); font-size: 0.75rem; }
+.date[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* dados clínicos */
+.clin { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 20px; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field > label, .field > .lbl { font-size: 0.82rem; font-weight: 700; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; width: fit-content; max-width: 100%; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 7px 12px; cursor: pointer; font-size: 0.88rem; border-right: 1px solid var(--line); user-select: none; }
+.seg label:last-of-type { border-right: 0; }
+.seg input:checked + label { background: var(--accent); color: var(--surface); font-weight: 700; }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+input[type="number"], select { font: inherit; font-family: var(--font-num); padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); width: 100%; max-width: 160px; }
+.pair { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pair input { max-width: 100px; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 0.88rem; cursor: pointer; }
+
+/* resultados */
+.results { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 6px; align-content: start; min-width: 0; border-top: 4px solid var(--line); }
+.card.ok { border-top-color: var(--ok); }
+.card.warn { border-top-color: var(--warn); }
+.card.crit { border-top-color: var(--crit); }
+.card h3 { margin: 0; font-size: 0.95rem; }
+.val { font-family: var(--font-num); font-size: 2rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.card.missing .val { font-size: 1.1rem; color: var(--muted); font-weight: 500; }
+.pill { display: inline-block; font-size: 0.78rem; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--na-bg); color: var(--muted); width: fit-content; }
+.ok .pill { background: var(--ok-bg); color: var(--ok); }
+.warn .pill { background: var(--warn-bg); color: var(--warn); }
+.crit .pill { background: var(--crit-bg); color: var(--crit); }
+.interp { font-size: 0.86rem; }
+.used { font-size: 0.78rem; color: var(--muted); font-family: var(--font-num); overflow-wrap: anywhere; }
+.used .carry { color: var(--warn); }
+.card select { max-width: 100%; font-size: 0.8rem; padding: 4px 6px; }
+
+/* tabela */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+tr.carry td { color: var(--warn); }
+.warnbox { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; }
+.warnbox ul { margin: 4px 0 0; padding-left: 18px; }
+.summary { font-family: var(--font-num); font-size: 0.85rem; background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; overflow-wrap: anywhere; }
+footer { color: var(--muted); font-size: 0.78rem; }
+details summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Calcula<span>Fígado</span></h1>
+      <p class="sub">Escores hepáticos a partir da linha de exames. Nada sai do seu navegador.</p>
+    </div>
+  </header>
+
+  <section class="panel" aria-labelledby="h-exames">
+    <div class="row between" style="margin-bottom:8px">
+      <h2 id="h-exames" style="margin:0">Exames</h2>
+      <span class="example-tag" id="exampleTag">Exemplo carregado</span>
+    </div>
+    <textarea id="labs" spellcheck="false" aria-label="Cole aqui as linhas de exames"></textarea>
+    <div class="row between" style="margin-top:10px">
+      <span class="hint">Cole uma ou várias linhas com data (ex.: 30/09/26). Cada data vira uma coluna de exames.</span>
+      <div class="row">
+        <button id="btnPaste" type="button">Colar</button>
+        <button id="btnClear" type="button">Limpar</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-datas">
+    <h2 id="h-datas">Data dos exames</h2>
+    <div class="dates" id="dates"></div>
+    <div class="row" style="margin-top:10px">
+      <label class="check" for="carry">Completar valores ausentes com exames de até</label>
+      <select id="carry" style="max-width:120px">
+        <option value="0">0 dias (não)</option>
+        <option value="3">3 dias</option>
+        <option value="7" selected>7 dias</option>
+        <option value="30">30 dias</option>
+      </select>
+      <span class="hint">antes. Valores emprestados aparecem em amarelo.</span>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-clin">
+    <h2 id="h-clin">Dados clínicos</h2>
+    <div class="clin">
+      <div class="field">
+        <span class="lbl">Sexo</span>
+        <div class="seg" role="radiogroup" aria-label="Sexo">
+          <input type="radio" name="sexo" id="sexoF" value="F"><label for="sexoF">Feminino</label>
+          <input type="radio" name="sexo" id="sexoM" value="M"><label for="sexoM">Masculino</label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="idade">Idade (anos)</label>
+        <input type="number" id="idade" min="0" max="120" inputmode="numeric" placeholder="ex.: 58">
+      </div>
+      <div class="field">
+        <span class="lbl">Ascite</span>
+        <div class="seg" role="radiogroup" aria-label="Ascite">
+          <input type="radio" name="ascite" id="asc1" value="1" checked><label for="asc1">Ausente</label>
+          <input type="radio" name="ascite" id="asc2" value="2"><label for="asc2">Leve / controlada</label>
+          <input type="radio" name="ascite" id="asc3" value="3"><label for="asc3">Moderada a grave</label>
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl">Encefalopatia</span>
+        <div class="seg" role="radiogroup" aria-label="Encefalopatia">
+          <input type="radio" name="ence" id="enc1" value="1" checked><label for="enc1">Ausente</label>
+          <input type="radio" name="ence" id="enc2" value="2"><label for="enc2">Grau I–II</label>
+          <input type="radio" name="ence" id="enc3" value="3"><label for="enc3">Grau III–IV</label>
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl">Diálise</span>
+        <label class="check" for="dialise"><input type="checkbox" id="dialise"> ≥ 2 sessões na última semana ou CVVHD</label>
+      </div>
+      <div class="field">
+        <span class="lbl">Doença colestática</span>
+        <label class="check" for="colest"><input type="checkbox" id="colest"> CBP / CEP (Child-Pugh com cortes de bilirrubina 4 e 10)</label>
+      </div>
+      <div class="field">
+        <span class="lbl">Tempo de protrombina (s)</span>
+        <div class="pair">
+          <input type="number" id="tpPac" step="0.1" inputmode="decimal" placeholder="paciente" aria-label="TP do paciente em segundos">
+          <input type="number" id="tpCtl" step="0.1" inputmode="decimal" value="12" aria-label="TP controle em segundos">
+          <span class="hint">paciente / controle</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="astUln">LSN do TGO (U/L), para APRI</label>
+        <input type="number" id="astUln" value="40" inputmode="numeric">
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-res">
+    <div class="row between" style="margin-bottom:10px">
+      <h2 id="h-res" style="margin:0">Escores <span id="resDate"></span></h2>
+      <button id="btnCopy" type="button" class="primary">Copiar resumo</button>
+    </div>
+    <div class="results" id="results"></div>
+    <p class="summary" id="summary" style="margin-top:12px"></p>
+  </section>
+
+  <section class="panel" aria-labelledby="h-vals">
+    <h2 id="h-vals">Valores lidos nesta data</h2>
+    <div id="warnings"></div>
+    <div class="tablewrap"><table id="valsTable"></table></div>
+    <details style="margin-top:12px">
+      <summary>Todas as datas</summary>
+      <div class="tablewrap" style="margin-top:8px"><table id="allTable"></table></div>
+    </details>
+  </section>
+
+  <footer>
+    MELD e MELD-Na pela regra UNOS/OPTN (valores &lt; 1 viram 1, creatinina limitada a 4, sódio entre 125 e 137). MELD 3.0 conforme Kim et al., 2021 (creatinina limitada a 3, albumina entre 1,5 e 3,5). Lille conforme Louvet et al., 2007. Ferramenta de apoio; confira os valores lidos antes de usar o resultado.
+  </footer>
+</div>
+
+<script>
+/* ===== Leitor de exames ===== */
+const L = 'A-Za-zÀ-ÿ';
+const ANALYTES = [
+  { k:'bt',   lab:'BT',   name:'Bilirrubina total', unit:'mg/dL', alias:'bil\\w*\\s+tot\\w*|bb\\s*tot\\w*|btot\\w*|bt', min:0.05, max:80 },
+  { k:'bd',   lab:'BD',   name:'Bilirrubina direta', unit:'mg/dL', alias:'bil\\w*\\s+dir\\w*|bd', min:0, max:60 },
+  { k:'inr',  lab:'INR',  name:'INR', unit:'', alias:'inr|rni', min:0.5, max:15 },
+  { k:'cr',   lab:'Cr',   name:'Creatinina', unit:'mg/dL', alias:'creatinina|creat|cr', min:0.1, max:25 },
+  { k:'na',   lab:'Na',   name:'Sódio', unit:'mEq/L', alias:'s[óo]dio|na', min:100, max:180 },
+  { k:'alb',  lab:'Alb',  name:'Albumina', unit:'g/dL', alias:'albumina|alb', min:0.5, max:70, norm:v => v > 10 ? v/10 : v },
+  { k:'plt',  lab:'Plaq', name:'Plaquetas', unit:'mil/µL', alias:'plaquetas|plaq|pqt|pq|plt', min:1, max:3000000, norm:v => v >= 1000 ? v/1000 : v },
+  { k:'ast',  lab:'TGO',  name:'TGO (AST)', unit:'U/L', alias:'tgo|ast', min:1, max:30000 },
+  { k:'alt',  lab:'TGP',  name:'TGP (ALT)', unit:'U/L', alias:'tgp|alt', min:1, max:30000 },
+  { k:'fa',   lab:'FA',   name:'Fosfatase alcalina', unit:'U/L', alias:'fosfatase\\s+alcalina|fal|fa', min:1, max:20000 },
+  { k:'ggt',  lab:'GGT',  name:'GGT', unit:'U/L', alias:'ggt|gama\\s*gt', min:1, max:20000 },
+  { k:'ur',   lab:'Ur',   name:'Ureia', unit:'mg/dL', alias:'ur[ée]ia|ur', min:1, max:600 },
+  { k:'k',    lab:'K',    name:'Potássio', unit:'mEq/L', alias:'pot[áa]ssio|k', min:1, max:10 },
+  { k:'hb',   lab:'Hb',   name:'Hemoglobina', unit:'g/dL', alias:'hemoglobina|hb', min:2, max:25 },
+  { k:'leuco',lab:'Leuco',name:'Leucócitos', unit:'mil/µL', alias:'leuc[óo]citos|leuco|leu|wbc', min:0.1, max:500000, norm:v => v >= 1000 ? v/1000 : v },
+  { k:'pcr',  lab:'PCR',  name:'PCR', unit:'mg/dL', alias:'pcr', min:0, max:600 },
+  { k:'tp',   lab:'TP',   name:'Tempo de protrombina', unit:'s', alias:'tap\\s*\\(\\s*tempo\\s*\\)|tp\\s*\\(\\s*s\\s*\\)|tempo\\s+de\\s+protrombina|tp\\s*seg\\w*', min:5, max:200, noParen:true },
+];
+ANALYTES.forEach(a => {
+  const paren = a.noParen ? '' : '(?:\\([^)\\n]{0,12}\\)\\s*)?';
+  a.re = new RegExp(`(?<![${L}])(?:${a.alias})(?![${L}])\\s*${paren}[:=]?\\s*(?:[<>]=?\\s*)?(\\d+(?:[.,]\\d+)*)(\\s*mil(?![${L}]))?`, 'gi');
+});
+const BYK = Object.fromEntries(ANALYTES.map(a => [a.k, a]));
+
+function parseNum(s) {
+  const seps = s.match(/[.,]/g) || [];
+  if (!seps.length) return +s;
+  if (seps.length === 1) return +s.replace(',', '.');
+  const last = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+  if (seps.every(c => c === s[last])) return +s.replace(/[.,]/g, '');
+  return +(s.slice(0, last).replace(/[.,]/g, '') + '.' + s.slice(last + 1));
+}
+
+function extractValues(text, allLow) {
+  const out = {};
+  const gasoIdx = text.toLowerCase().search(/gaso/);
+  for (const a of ANALYTES) {
+    a.re.lastIndex = 0;
+    let m;
+    while ((m = a.re.exec(text))) {
+      let v = parseNum(m[1]);
+      if (m[2]) v *= 1000;
+      if (a.norm) v = a.norm(v);
+      if (!isFinite(v) || v < a.min || v > a.max) continue;
+      const low = allLow || (gasoIdx >= 0 && m.index > gasoIdx);
+      (out[a.k] = out[a.k] || []).push({ v, raw: m[0].trim(), low });
+    }
+  }
+  return out;
+}
+
+const DATE_RE = /(?<!\d)(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})(?!\d)/g;
+function parseLabs(text) {
+  const marks = [];
+  DATE_RE.lastIndex = 0;
+  let m;
+  while ((m = DATE_RE.exec(text))) {
+    const d = +m[1], mo = +m[2];
+    let y = +m[3]; if (y < 100) y += 2000;
+    if (d < 1 || d > 31 || mo < 1 || mo > 12) continue;
+    const lineBefore = text.slice(Math.max(0, m.index - 40), m.index).split('\n').pop().toLowerCase();
+    marks.push({ idx: m.index, end: m.index + m[0].length, date: new Date(y, mo - 1, d), gaso: /gaso/.test(lineBefore) });
+  }
+  const raw = [];
+  if (!marks.length) raw.push({ date: null, text, gaso: false });
+  else {
+    const head = text.slice(0, marks[0].idx);
+    if (head.trim()) raw.push({ date: null, text: head, gaso: false });
+    marks.forEach((mk, i) => raw.push({ date: mk.date, text: text.slice(mk.end, i + 1 < marks.length ? marks[i + 1].idx : text.length), gaso: mk.gaso }));
+  }
+  const byKey = new Map();
+  for (const b of raw) {
+    const vals = extractValues(b.text, b.gaso);
+    if (!Object.keys(vals).length) continue;
+    const key = b.date ? b.date.toISOString().slice(0, 10) : 'sem-data';
+    if (!byKey.has(key)) byKey.set(key, { key, date: b.date, cands: {} });
+    const e = byKey.get(key);
+    for (const [k, list] of Object.entries(vals)) (e.cands[k] = e.cands[k] || []).push(...list);
+  }
+  const blocks = [...byKey.values()].map(e => {
+    const values = {}, warnings = [];
+    for (const [k, list] of Object.entries(e.cands)) {
+      const main = list.filter(x => !x.low);
+      const pick = main[0] || list[0];
+      values[k] = { v: pick.v, raw: pick.raw, gaso: pick.low };
+      const distinct = [...new Set(main.map(x => x.v))];
+      if (distinct.length > 1) warnings.push(`${BYK[k].name}: mais de um valor (${main.map(x => x.raw).join(' / ')}). Usei o primeiro.`);
+    }
+    return { key: e.key, date: e.date, values, warnings };
+  });
+  blocks.sort((a, b) => (b.date ? b.date.getTime() : -Infinity) - (a.date ? a.date.getTime() : -Infinity));
+  return blocks;
+}
+
+function resolveValues(blocks, idx, carryDays) {
+  const sel = blocks[idx];
+  const res = {};
+  for (const a of ANALYTES) {
+    if (sel.values[a.k]) { res[a.k] = { ...sel.values[a.k], from: sel, carried: false }; continue; }
+    if (!carryDays || !sel.date) continue;
+    for (let j = idx + 1; j < blocks.length; j++) {
+      const b = blocks[j];
+      if (!b.date) break;
+      const days = (sel.date - b.date) / 864e5;
+      if (days > carryDays) break;
+      if (b.values[a.k]) { res[a.k] = { ...b.values[a.k], from: b, carried: true }; break; }
+    }
+  }
+  return res;
+}
+
+/* ===== Escores ===== */
+const ln = Math.log, clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+const r1 = x => Math.round(x * 10) / 10, r2 = x => Math.round(x * 100) / 100;
+
+function meldParts(v, c) {
+  const bt = Math.max(1, v.bt), inr = Math.max(1, v.inr);
+  const cr = c.dialise ? 4 : clamp(v.cr, 1, 4);
+  const mi = r1(10 * (0.957 * ln(cr) + 0.378 * ln(bt) + 1.120 * ln(inr) + 0.643));
+  return mi;
+}
+
+const SCORES = [
+  { id: 'child', name: 'Child-Pugh', needs: ['bt', 'alb', 'inr'], calc(v, c) {
+      const bt = v.bt;
+      const pb = c.colest ? (bt < 4 ? 1 : bt <= 10 ? 2 : 3) : (bt < 2 ? 1 : bt <= 3 ? 2 : 3);
+      const pa = v.alb > 3.5 ? 1 : v.alb >= 2.8 ? 2 : 3;
+      const pi = v.inr < 1.7 ? 1 : v.inr <= 2.3 ? 2 : 3;
+      const s = pb + pa + pi + c.ascite + c.ence;
+      const cls = s <= 6 ? 'A' : s <= 9 ? 'B' : 'C';
+      const surv = { A: '100% em 1 ano, 85% em 2 anos', B: '80% em 1 ano, 60% em 2 anos', C: '45% em 1 ano, 35% em 2 anos' }[cls];
+      return { value: `${cls} (${s})`, tone: cls === 'A' ? 'ok' : cls === 'B' ? 'warn' : 'crit', pill: `Classe ${cls}`,
+        interp: `Sobrevida estimada ${surv}. Bilirrubina ${pb} + albumina ${pa} + INR ${pi} + ascite ${c.ascite} + encefalopatia ${c.ence}.`, short: `Child-Pugh ${cls} (${s})` };
+  } },
+  { id: 'meld', name: 'MELD', needs: ['bt', 'inr', 'cr'], calc(v, c) {
+      const s = Math.min(40, Math.round(meldParts(v, c)));
+      return { value: s, ...meldTone(s), short: `MELD ${s}` };
+  } },
+  { id: 'meldna', name: 'MELD-Na', needs: ['bt', 'inr', 'cr', 'na'], calc(v, c) {
+      const mi = meldParts(v, c);
+      const na = clamp(v.na, 125, 137);
+      let s = mi > 11 ? mi + 1.32 * (137 - na) - 0.033 * mi * (137 - na) : mi;
+      s = Math.min(40, Math.round(s));
+      return { value: s, ...meldTone(s), short: `MELD-Na ${s}` };
+  } },
+  { id: 'meld3', name: 'MELD 3.0', needs: ['bt', 'inr', 'cr', 'na', 'alb', 'sexo'], calc(v, c) {
+      const bt = Math.max(1, v.bt), inr = Math.max(1, v.inr);
+      const cr = c.dialise ? 3 : clamp(v.cr, 1, 3);
+      const na = clamp(v.na, 125, 137), alb = clamp(v.alb, 1.5, 3.5);
+      const f = c.sexo === 'F' ? 1 : 0;
+      let s = 1.33 * f + 4.56 * ln(bt) + 0.82 * (137 - na) - 0.24 * (137 - na) * ln(bt) + 9.09 * ln(inr) + 11.14 * ln(cr) + 1.85 * (3.5 - alb) - 1.83 * (3.5 - alb) * ln(cr) + 6;
+      s = Math.min(40, Math.round(s));
+      return { value: s, ...meldTone(s), short: `MELD 3.0 ${s}` };
+  } },
+  { id: 'albi', name: 'ALBI', needs: ['bt', 'alb'], calc(v) {
+      const s = Math.log10(v.bt * 17.1) * 0.66 + v.alb * 10 * -0.085;
+      const g = s <= -2.60 ? 1 : s <= -1.39 ? 2 : 3;
+      return { value: fmt(s, 2), tone: ['ok', 'warn', 'crit'][g - 1], pill: `Grau ${g}`,
+        interp: 'Grau 1 ≤ −2,60; grau 2 até −1,39; grau 3 > −1,39.', short: `ALBI ${fmt(s, 2)} (grau ${g})` };
+  } },
+  { id: 'fib4', name: 'FIB-4', needs: ['idade', 'ast', 'alt', 'plt'], calc(v, c) {
+      const s = c.idade * v.ast / (v.plt * Math.sqrt(v.alt));
+      const lowCut = c.idade >= 65 ? 2.0 : 1.30;
+      const t = s < lowCut ? ['ok', 'Baixo risco'] : s > 2.67 ? ['crit', 'Alto risco'] : ['warn', 'Indeterminado'];
+      let interp = `Fibrose avançada: < ${fmt(lowCut)} afasta${c.idade >= 65 ? ' (corte para ≥ 65 anos)' : ''}; > 2,67 sugere.`;
+      if (c.idade < 35) interp += ' Pouco validado abaixo de 35 anos.';
+      return { value: fmt(r2(s), 2), tone: t[0], pill: t[1], interp, short: `FIB-4 ${fmt(r2(s), 2)}` };
+  } },
+  { id: 'apri', name: 'APRI', needs: ['ast', 'plt'], calc(v, c) {
+      const s = (v.ast / c.astUln) / v.plt * 100;
+      const t = s < 0.5 ? ['ok', 'Baixa probabilidade'] : s >= 2 ? ['crit', 'Sugere cirrose'] : s >= 1 ? ['warn', 'Possível cirrose'] : ['warn', 'Indeterminado'];
+      return { value: fmt(r2(s), 2), tone: t[0], pill: t[1], interp: `< 0,5 afasta fibrose significativa; ≥ 1,0 sugere cirrose; ≥ 2,0 com alta especificidade. LSN do TGO ${c.astUln}.`, short: `APRI ${fmt(r2(s), 2)}` };
+  } },
+  { id: 'maddrey', name: 'Maddrey (FD)', needs: ['tp', 'bt'], calc(v, c) {
+      const s = 4.6 * (v.tp - c.tpCtl) + v.bt;
+      return { value: fmt(r1(s), 1), tone: s >= 32 ? 'crit' : 'ok', pill: s >= 32 ? 'Grave (≥ 32)' : 'Não grave',
+        interp: `Hepatite alcoólica: ≥ 32 indica forma grave e avaliar corticoide. TP ${fmt(v.tp, 1)} s, controle ${fmt(c.tpCtl, 1)} s.`, short: `Maddrey ${fmt(r1(s), 1)}` };
+  } },
+  { id: 'gahs', name: 'Glasgow (GAHS)', needs: ['idade', 'leuco', 'ur', 'inr', 'bt'], calc(v, c) {
+      const pa = c.idade < 50 ? 1 : 2;
+      const pw = v.leuco < 15 ? 1 : 2;
+      const pu = v.ur / 6.006 < 5 ? 1 : 2;
+      const pi = v.inr < 1.5 ? 1 : v.inr <= 2 ? 2 : 3;
+      const bu = v.bt * 17.1;
+      const pb = bu < 125 ? 1 : bu <= 250 ? 2 : 3;
+      const s = pa + pw + pu + pi + pb;
+      return { value: s, tone: s >= 9 ? 'crit' : 'ok', pill: s >= 9 ? 'Mau prognóstico (≥ 9)' : 'Menor risco',
+        interp: `Hepatite alcoólica. Idade ${pa} + leucócitos ${pw} + ureia ${pu} + INR ${pi} + bilirrubina ${pb}.`, short: `GAHS ${s}` };
+  } },
+  { id: 'abic', name: 'ABIC', needs: ['idade', 'bt', 'inr', 'cr'], calc(v, c) {
+      const s = c.idade * 0.1 + v.bt * 0.08 + v.cr * 0.3 + v.inr * 0.8;
+      const t = s < 6.71 ? ['ok', 'Baixo risco'] : s < 9 ? ['warn', 'Risco intermediário'] : ['crit', 'Alto risco'];
+      return { value: fmt(r2(s), 2), tone: t[0], pill: t[1], interp: 'Hepatite alcoólica: < 6,71 baixo; 6,71 a 9 intermediário; ≥ 9 alto risco em 90 dias.', short: `ABIC ${fmt(r2(s), 2)}` };
+  } },
+  { id: 'lille', name: 'Lille', lille: true },
+  { id: 'deritis', name: 'TGO/TGP', needs: ['ast', 'alt'], calc(v) {
+      const s = v.ast / v.alt;
+      return { value: fmt(r2(s), 2), tone: s >= 2 ? 'warn' : 'ok', pill: s >= 2 ? '≥ 2' : s >= 1 ? '≥ 1' : '< 1',
+        interp: 'Razão de De Ritis. ≥ 1 favorece fibrose avançada; ≥ 2 sugere etiologia alcoólica.', short: `TGO/TGP ${fmt(r2(s), 2)}` };
+  } },
+];
+
+function meldTone(s) {
+  const mort = s <= 9 ? '1,9%' : s <= 19 ? '6,0%' : s <= 29 ? '19,6%' : s <= 39 ? '52,6%' : '71,3%';
+  return { tone: s < 15 ? 'ok' : s < 25 ? 'warn' : 'crit', pill: s < 15 ? '< 15' : s < 25 ? '15 a 24' : '≥ 25', interp: `Mortalidade estimada em 3 meses ${mort}.` };
+}
+
+function lilleCalc(blocks, idx, d0idx, c) {
+  const d7 = blocks[idx], d0 = blocks[d0idx];
+  const v0 = d0 ? d0.values : {}, v7 = d7.values;
+  const missing = [];
+  if (!(c.idade > 0)) missing.push('idade');
+  if (!v0.bt) missing.push('BT do dia 0');
+  if (!v7.bt) missing.push('BT do dia 7');
+  if (!v0.alb) missing.push('albumina do dia 0');
+  if (!v0.cr) missing.push('creatinina do dia 0');
+  const tp = v0.tp ? v0.tp.v : c.tpPac;
+  if (!(tp > 0)) missing.push('TP em segundos');
+  if (missing.length) return { missing };
+  const b0 = v0.bt.v * 17.1, b7 = v7.bt.v * 17.1;
+  const R = 3.19 - 0.101 * c.idade + 0.147 * v0.alb.v * 10 + 0.0165 * (b0 - b7) - 0.206 * (v0.cr.v > 1.3 ? 1 : 0) - 0.0065 * b0 - 0.0096 * tp;
+  const s = Math.exp(-R) / (1 + Math.exp(-R));
+  return { value: fmt(r2(s), 2), tone: s >= 0.45 ? 'crit' : 'ok', pill: s >= 0.45 ? 'Não respondedor' : 'Respondedor',
+    interp: `≥ 0,45 indica falha ao corticoide. BT ${fmt(v0.bt.v)} → ${fmt(v7.bt.v)} mg/dL, TP ${fmt(tp, 1)} s.`, short: `Lille ${fmt(r2(s), 2)}` };
+}
+
+function fmt(x, d) {
+  if (x == null || !isFinite(x)) return '—';
+  const s = d == null ? String(+x.toFixed(2)) : x.toFixed(d);
+  return s.replace('.', ',');
+}
+function fmtDate(d) { return d ? d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Sem data'; }
+
+if (typeof module !== 'undefined') module.exports = { parseLabs, resolveValues, SCORES, lilleCalc, parseNum };
+
+/* ===== Interface ===== */
+if (typeof document !== 'undefined') {
+const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | TGO 32, TGP 30, FA 275, GGT 191***, BT 1,16***, BD 0,38***, BI 0,78, INR 1,20 | PT 6,94, ALB 4,20 | Ur 27, Cr 0,94 | Na 138,0, K 4,5
+- (28/09/2026): HB 12,10, Leuco 3,3***, PQT 52*** | PCR 0,160 | TGO 87***, TGP 57***, FA 270, GGT 188***, BT 1,30***, BD 0,53***, INR 1,22***, TTPA 28,40 | PT 6,91, ALB 4,15 | Ur 33, Cr 0,79 | Na 141,0, K 4,4
+- 31/03/26: BT 1.74 BD 0.72 BI 1.02 FAL 234 GGT 144 Hb 12.7 Leuco 4500 plaq 56.000 Na 139 INR 1.23 Alb 3.73 Creat 0.72 Ur 38 K 4.2`;
+  const $ = id => document.getElementById(id);
+  const ta = $('labs');
+  let blocks = [], selIdx = 0, isExample = true, lilleD0 = null, userPickedDate = false;
+  ta.value = EXAMPLE;
+
+  function clin() {
+    const radio = n => { const el = document.querySelector(`input[name="${n}"]:checked`); return el ? el.value : null; };
+    return {
+      sexo: radio('sexo'), idade: parseFloat($('idade').value),
+      ascite: +radio('ascite'), ence: +radio('ence'),
+      dialise: $('dialise').checked, colest: $('colest').checked,
+      tpPac: parseFloat($('tpPac').value), tpCtl: parseFloat($('tpCtl').value) || 12,
+      astUln: parseFloat($('astUln').value) || 40,
+    };
+  }
+
+  function bestDefault() {
+    const need = ['bt', 'inr', 'cr'];
+    const carry = +$('carry').value;
+    for (let i = 0; i < blocks.length; i++) {
+      const v = resolveValues(blocks, i, carry);
+      if (need.every(k => v[k])) return i;
+    }
+    return 0;
+  }
+
+  function reparse() {
+    blocks = parseLabs(ta.value);
+    if (!userPickedDate || selIdx >= blocks.length) selIdx = blocks.length ? bestDefault() : 0;
+    lilleD0 = null;
+    render();
+  }
+
+  function renderDates() {
+    const box = $('dates');
+    box.innerHTML = '';
+    if (!blocks.length) { box.innerHTML = '<span class="hint">Nenhum exame reconhecido ainda. Cole a linha de exames acima.</span>'; return; }
+    blocks.forEach((b, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'date';
+      btn.setAttribute('aria-pressed', i === selIdx);
+      const keys = ['bt', 'inr', 'cr', 'na', 'alb'].filter(k => b.values[k]).map(k => BYK[k].lab);
+      btn.innerHTML = `<b>${fmtDate(b.date)}</b><small>${keys.length ? keys.join(' · ') : Object.keys(b.values).length + ' valores'}</small>`;
+      btn.onclick = () => { selIdx = i; userPickedDate = true; lilleD0 = null; render(); };
+      box.appendChild(btn);
+    });
+  }
+
+  function usedLine(keys, v) {
+    return keys.filter(k => v[k]).map(k => {
+      const x = v[k];
+      const txt = `${BYK[k].lab} ${fmt(x.v)}`;
+      const note = x.carried ? ` (${fmtDate(x.from.date).slice(0, 5)})` : x.gaso ? ' (gaso)' : '';
+      return x.carried ? `<span class="carry">${txt}${note}</span>` : txt + note;
+    }).join(' · ');
+  }
+
+  function render() {
+    renderDates();
+    const res = $('results');
+    res.innerHTML = '';
+    const c = clin();
+    if (!blocks.length) { $('resDate').textContent = ''; $('summary').textContent = ''; $('valsTable').innerHTML = ''; $('allTable').innerHTML = ''; $('warnings').innerHTML = ''; return; }
+    const sel = blocks[selIdx];
+    $('resDate').textContent = '· ' + fmtDate(sel.date);
+    const rv = resolveValues(blocks, selIdx, +$('carry').value);
+    const v = Object.fromEntries(Object.entries(rv).map(([k, x]) => [k, x.v]));
+    if (!(v.tp > 0) && c.tpPac > 0) v.tp = c.tpPac;
+    const shorts = [], usedKeys = new Set();
+    for (const sc of SCORES) {
+      const card = document.createElement('div');
+      let out, extra = '';
+      if (sc.lille) {
+        const opts = blocks.map((b, i) => [b, i]).filter(([b, i]) => i > selIdx && b.date && b.values.bt);
+        if (lilleD0 == null || !opts.some(([, i]) => i === lilleD0)) {
+          let best = null, bestDiff = Infinity;
+          opts.forEach(([b, i]) => { const d = Math.abs((sel.date - b.date) / 864e5 - 7); if (d < bestDiff) { bestDiff = d; best = i; } });
+          lilleD0 = best;
+        }
+        out = opts.length ? lilleCalc(blocks, selIdx, lilleD0, c) : { missing: ['exame do dia 0 (data anterior com BT)'] };
+        if (opts.length) {
+          extra = `<label class="used">Dia 0: <select id="lilleD0">${opts.map(([b, i]) => `<option value="${i}" ${i === lilleD0 ? 'selected' : ''}>${fmtDate(b.date)}</option>`).join('')}</select> · dia 7 = ${fmtDate(sel.date)}</label>`;
+        }
+      } else {
+        const miss = sc.needs.filter(k => k === 'idade' ? !(c.idade > 0) : k === 'sexo' ? !c.sexo : !(v[k] > 0));
+        out = miss.length ? { missing: miss.map(k => k === 'idade' ? 'idade' : k === 'sexo' ? 'sexo' : BYK[k].lab) } : sc.calc(v, c);
+        extra = `<div class="used">${usedLine(sc.needs.filter(k => BYK[k]), rv)}</div>`;
+      }
+      if (out.missing) {
+        card.className = 'card missing';
+        card.innerHTML = `<h3>${sc.name}</h3><div class="val">Falta: ${out.missing.join(', ')}</div>${extra}`;
+      } else {
+        card.className = 'card ' + out.tone;
+        card.innerHTML = `<h3>${sc.name}</h3><div class="val">${out.value}</div><span class="pill">${out.pill}</span><div class="interp">${out.interp}</div>${extra}`;
+        shorts.push(out.short);
+        (sc.needs || ['bt', 'alb', 'cr']).forEach(k => usedKeys.add(k));
+      }
+      res.appendChild(card);
+    }
+    const sel0 = $('lilleD0');
+    if (sel0) sel0.onchange = e => { lilleD0 = +e.target.value; render(); };
+    const carriedAny = [...usedKeys].some(k => rv[k] && rv[k].carried);
+    $('summary').textContent = shorts.length ? `${shorts.join(' | ')} (exames de ${fmtDate(sel.date)}${carriedAny ? ', alguns de datas anteriores' : ''})` : 'Nenhum escore calculado ainda.';
+
+    // tabela da data
+    const rows = ANALYTES.filter(a => rv[a.k]).map(a => {
+      const x = rv[a.k];
+      const origem = x.carried ? `de ${fmtDate(x.from.date)}` : x.gaso ? 'gasometria' : 'nesta data';
+      return `<tr class="${x.carried ? 'carry' : ''}"><td>${a.name}</td><td class="num">${fmt(x.v)} ${a.unit}</td><td>${origem}</td><td class="num">${x.raw.replace(/</g, '&lt;')}</td></tr>`;
+    });
+    $('valsTable').innerHTML = `<thead><tr><th>Exame</th><th>Valor usado</th><th>Origem</th><th>Texto lido</th></tr></thead><tbody>${rows.join('')}</tbody>`;
+    const w = sel.warnings;
+    $('warnings').innerHTML = w.length ? `<div class="warnbox">Confira:<ul>${w.map(x => `<li>${x}</li>`).join('')}</ul></div>` : '';
+
+    // todas as datas
+    const used = ANALYTES.filter(a => blocks.some(b => b.values[a.k]));
+    $('allTable').innerHTML = `<thead><tr><th>Exame</th>${blocks.map(b => `<th>${fmtDate(b.date)}</th>`).join('')}</tr></thead><tbody>${used.map(a => `<tr><td>${a.lab}</td>${blocks.map(b => `<td class="num">${b.values[a.k] ? fmt(b.values[a.k].v) : ''}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  }
+
+  ta.addEventListener('input', () => { if (isExample) { isExample = false; $('exampleTag').hidden = true; } userPickedDate = false; reparse(); });
+  document.querySelectorAll('.clin input, #carry').forEach(el => el.addEventListener(el.type === 'number' ? 'input' : 'change', () => { if (el.id === 'carry' && !userPickedDate) reparse(); else render(); }));
+  $('btnClear').onclick = () => {
+    ta.value = ''; isExample = false; $('exampleTag').hidden = true; userPickedDate = false;
+    ['idade', 'tpPac'].forEach(id => $(id).value = '');
+    document.querySelectorAll('input[name="sexo"]').forEach(r => r.checked = false);
+    $('asc1').checked = true; $('enc1').checked = true; $('dialise').checked = false; $('colest').checked = false;
+    reparse(); ta.focus();
+  };
+  $('btnPaste').onclick = async () => {
+    try { const t = await navigator.clipboard.readText(); if (t) { ta.value = t; ta.dispatchEvent(new Event('input')); return; } } catch (e) {}
+    ta.value = ''; ta.focus(); $('exampleTag').hidden = true; isExample = false;
+    ta.placeholder = 'Toque e segure aqui para colar (ou Ctrl+V).';
+    reparse();
+  };
+  $('btnCopy').onclick = async () => {
+    const t = $('summary').textContent;
+    try { await navigator.clipboard.writeText(t); $('btnCopy').textContent = 'Copiado'; setTimeout(() => $('btnCopy').textContent = 'Copiar resumo', 1500); }
+    catch (e) { const r = document.createRange(); r.selectNodeContents($('summary')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $('btnCopy').textContent = 'Selecionado, copie'; }
+  };
+  reparse();
+}
+</script>
+</body>
+</html>
