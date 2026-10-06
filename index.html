@@ -399,7 +399,7 @@ const SCORES = [
       const s = c.idade * v.ast / (v.plt * Math.sqrt(v.alt));
       const lowCut = c.idade >= 65 ? 2.0 : 1.30;
       const t = s < lowCut ? ['ok', 'Baixo risco'] : s > 2.67 ? ['crit', 'Alto risco'] : ['warn', 'Indeterminado'];
-      let interp = `Fibrose avançada: < ${fmt(lowCut)} afasta${c.idade >= 65 ? ' (corte para ≥ 65 anos)' : ''}; > 2,67 sugere.`;
+      let interp = `Fibrose avançada: < ${fmt(lowCut)} afasta${c.idade >= 65 ? ' (corte para ≥ 65 anos)' : ''}; > 2,67 sugere (cortes DHGNA). Na hepatite C, o MDCalc usa < 1,45 e > 3,25.`;
       if (c.idade < 35) interp += ' Pouco validado abaixo de 35 anos.';
       return { value: fmt(r2(s), 2), tone: t[0], pill: t[1], interp, short: `FIB-4 ${fmt(r2(s), 2)}` };
   } },
