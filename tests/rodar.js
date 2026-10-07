@@ -55,7 +55,7 @@ for (let i = 0; i < N; i++) {
     pas: val(60, 180, 0, [90, 100, 110]), fc: val(40, 160, 0, [100]),
     melena: rnd() < 0.5, sincope: rnd() < 0.3, hepat: rnd() < 0.3, icc: rnd() < 0.2, mental: rnd() < 0.3,
     comorb: pick(['0', '2', '3']), diag: pick(['', '0', '1', '2']), srh: pick(['0', '2']),
-    altUln: pick([40, 41, 33, 56]), faUln: pick([120, 104, 129]), tpCtl: p.ctl,
+    altUln: pick([32, 40, 41, 56]), faUln: pick([300, 120, 104]), tpCtl: p.ctl,
   };
   const mulher = c.sexo === 'F', homem = !mulher;
   const v = { bt: p.bt, alb: p.alb, inr: p.inr, cr: p.cr, na: p.na, plt: p.plt, ast: p.ast, alt: p.alt, fa: p.fa, ur: p.ur, hb: p.hb, tp: p.tp };

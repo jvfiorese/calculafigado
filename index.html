@@ -413,9 +413,9 @@ const SCORES = [
       return { value: s, tone: t[0], pill: t[1], interp: `Risco de CHC em 5 anos ${t[2]}, em hepatite B sob entecavir ou tenofovir. Pontos: idade ${pa}, sexo ${ps}, plaquetas ${pp}.`, short: `PAGE-B ${s}` };
     } },
   { id: 'rfactor', tab: 'hepato', name: 'Fator R (DILI)', needs: ['alt', 'fa'],
-    inputs: [['num', 'altUln', 'LSN TGP', 40], ['num', 'faUln', 'LSN FA', 120]],
+    inputs: [['num', 'altUln', 'LSN TGP', 32], ['num', 'faUln', 'LSN FA', 300]],
     calc(v, c) {
-      const s = (v.alt / (c.altUln || 40)) / (v.fa / (c.faUln || 120));
+      const s = (v.alt / (c.altUln || 32)) / (v.fa / (c.faUln || 300));
       const t = s >= 5 ? ['crit', 'Hepatocelular'] : s > 2 ? ['warn', 'Misto'] : ['ok', 'Colestático'];
       return { value: fmt(s, 1), tone: t[0], pill: t[1], interp: '≥ 5 hepatocelular; entre 2 e 5 misto; ≤ 2 colestático. Use os exames do início da lesão.', short: `Fator R ${fmt(s, 1)} (${t[1].toLowerCase()})` };
     } },
@@ -442,7 +442,7 @@ const SCORES = [
       const pend = [];
       let fa = c.haiFaAlt;
       if (fa === 'auto' || fa == null) {
-        if (v.fa > 0 && v.alt > 0) { const r = (v.fa / (c.faUln || 120)) / (v.alt / (c.altUln || 40)); fa = r < 1.5 ? 2 : r <= 3 ? 0 : -2; }
+        if (v.fa > 0 && v.alt > 0) { const r = (v.fa / (c.faUln || 300)) / (v.alt / (c.altUln || 32)); fa = r < 1.5 ? 2 : r <= 3 ? 0 : -2; }
         else { fa = 0; pend.push('FA/TGP'); }
       }
       s += +fa;

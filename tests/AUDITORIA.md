@@ -41,4 +41,4 @@ Child-Pugh, MELD 3.0, FIB-4, fator R, Maddrey, Lille, Glasgow-Blatchford, Rockal
 ## Limites desta auditoria
 
 - A referência foi escrita pela mesma ferramenta que escreveu o app, só que separada e a partir das fontes. Um erro de leitura da fonte repetido nos dois passaria despercebido. Por isso vale conferir à mão, uma vez, alguns casos de cada escore no MDCalc ou na planilha do serviço.
-- Valores padrão que o app assume e que devem ser os do seu laboratório: TP controle 12 s (Maddrey), LSN de TGP 40 e de FA 120 (fator R e hepatite autoimune).
+- Valores padrão que o app assume e que devem ser os do seu laboratório: TP controle 12 s (Maddrey), LSN de TGP 32 e de FA 300 (fator R e hepatite autoimune), os do laboratório do serviço; dá para mudar no cartão.
