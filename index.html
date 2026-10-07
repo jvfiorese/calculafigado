@@ -333,14 +333,14 @@ function resolveValues(blocks, idx, carryDays) {
 
 /* ===== Escores ===== */
 const ln = Math.log, clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
-const r1 = x => Math.round(x * 10) / 10, r2 = x => Math.round(x * 100) / 100;
 
 function meldI(v, c) {
   const bt = Math.max(1, v.bt), inr = Math.max(1, v.inr);
   const cr = c.dialise ? 4 : clamp(v.cr, 1, 4);
-  return r1(10 * (0.957 * ln(cr) + 0.378 * ln(bt) + 1.120 * ln(inr) + 0.643));
+  // OPTN: arredonda na 1ª casa decimal e multiplica por 10, ou seja, MELD(i) já é inteiro
+  return Math.round(10 * (0.957 * ln(cr) + 0.378 * ln(bt) + 1.120 * ln(inr) + 0.643));
 }
-function calcMeld(v, c) { return Math.min(40, Math.round(meldI(v, c))); }
+function calcMeld(v, c) { return Math.min(40, meldI(v, c)); }
 function calcMeldNa(v, c) {
   const mi = meldI(v, c), na = clamp(v.na, 125, 137);
   const s = mi > 11 ? mi + 1.32 * (137 - na) - 0.033 * mi * (137 - na) : mi;
@@ -407,7 +407,7 @@ const SCORES = [
       const a = c.idade;
       const pa = a < 30 ? 0 : a < 40 ? 2 : a < 50 ? 4 : a < 60 ? 6 : a < 70 ? 8 : 10;
       const ps = c.sexo === 'M' ? 6 : 0;
-      const pp = v.plt >= 200 ? 0 : v.plt >= 100 ? 5 : 9;
+      const pp = v.plt >= 200 ? 0 : v.plt >= 100 ? 6 : 9;
       const s = pa + ps + pp;
       const t = s <= 9 ? ['ok', 'Baixo risco', 'cerca de 0%'] : s <= 17 ? ['warn', 'Risco intermediário', 'cerca de 3%'] : ['crit', 'Alto risco', 'cerca de 17%'];
       return { value: s, tone: t[0], pill: t[1], interp: `Risco de CHC em 5 anos ${t[2]}, em hepatite B sob entecavir ou tenofovir. Pontos: idade ${pa}, sexo ${ps}, plaquetas ${pp}.`, short: `PAGE-B ${s}` };
@@ -428,9 +428,9 @@ const SCORES = [
              ['sel', 'haiDrug', 'Droga hepatotóxica recente', [['', '—'], ['1', 'Não (+1)'], ['-4', 'Sim (−4)']]],
              ['sel', 'haiAlc', 'Álcool', [['', '—'], ['2', '< 25 g/dia (+2)'], ['0', '25 a 60 g/dia (0)'], ['-2', '> 60 g/dia (−2)']]],
              ['chk', 'haiAid', 'Outra doença autoimune no paciente ou em parente de 1º grau (+2)'],
-             ['chk', 'haiOther', 'Outros autoanticorpos definidos positivos (anti-SLA/LP, pANCA etc.) (+2)'],
+             ['chk', 'haiOther', 'Outros autoanticorpos definidos positivos (anti-SLA/LP, pANCA etc.) (+2, só se FAN, AML e anti-LKM1 < 1/40)'],
              ['chk', 'haiHla', 'HLA DR3 ou DR4 (+1)'],
-             ['chk', 'haiBx', 'Biópsia feita (sem nenhum achado abaixo: −5)'],
+             ['chk', 'haiBx', 'Biópsia feita (sem interface, infiltrado linfoplasmocitário nem rosetas: −5)'],
              ['chk', 'haiInt', 'Hepatite de interface (+3)'],
              ['chk', 'haiLpl', 'Infiltrado linfoplasmocitário predominante (+1)'],
              ['chk', 'haiRos', 'Rosetas (+1)'],
@@ -449,17 +449,19 @@ const SCORES = [
       [['haiGlob', 'globulinas'], ['haiAuto', 'FAN/AML/LKM1'], ['haiAma', 'AMA'], ['haiViral', 'marcadores virais'], ['haiDrug', 'drogas'], ['haiAlc', 'álcool']]
         .forEach(([k, l]) => { if (c[k] === '' || c[k] == null) pend.push(l); else s += +c[k]; });
       if (c.haiAid) s += 2;
-      if (c.haiOther) s += 2;
+      const otherIgnored = c.haiOther && c.haiAuto !== '0';
+      if (c.haiOther && !otherIgnored) s += 2;
       if (c.haiHla) s += 1;
-      const hx = (c.haiInt ? 3 : 0) + (c.haiLpl ? 1 : 0) + (c.haiRos ? 1 : 0) - (c.haiBil ? 3 : 0) - (c.haiAlt ? 3 : 0);
-      const anyHx = c.haiInt || c.haiLpl || c.haiRos || c.haiBil || c.haiAlt;
-      if (anyHx) s += hx; else if (c.haiBx) s -= 5; else pend.push('histologia');
+      // −5 vale quando faltam os três achados típicos, mesmo com alterações biliares ou outras (Alvarez 1999)
+      const hxPos = (c.haiInt ? 3 : 0) + (c.haiLpl ? 1 : 0) + (c.haiRos ? 1 : 0);
+      const hxNeg = (c.haiBil ? 3 : 0) + (c.haiAlt ? 3 : 0);
+      if (c.haiBx || hxPos || hxNeg) s += (hxPos || -5) - hxNeg; else pend.push('histologia');
       const post = c.haiTx === '2' || c.haiTx === '3';
       if (post) s += +c.haiTx;
       const [def, prob] = post ? [17, 12] : [15, 10];
       const t = s > def ? ['crit', 'Definitiva'] : s >= prob ? ['warn', 'Provável'] : ['ok', 'Improvável'];
       return { value: s, tone: pend.length ? 'partial' : t[0], pill: pend.length ? `Parcial (${pend.length} itens em branco)` : `HAI ${t[1].toLowerCase()}`,
-        interp: `${post ? 'Pós-tratamento' : 'Pré-tratamento'}: definitiva > ${def}, provável ${prob} a ${def}.${pend.length ? ` Sem pontuar: ${pend.join(', ')}.` : ''}`,
+        interp: `${post ? 'Pós-tratamento' : 'Pré-tratamento'}: definitiva > ${def}, provável ${prob} a ${def}.${otherIgnored ? ' Outros autoanticorpos não pontuados porque FAN, AML ou anti-LKM1 não está marcado como < 1/40.' : ''}${pend.length ? ` Sem pontuar: ${pend.join(', ')}.` : ''}`,
         short: pend.length ? null : `Escore HAI ${s} (${t[1].toLowerCase()})` };
     } },
   { id: 'maddrey', tab: 'alcool', name: 'Maddrey (FD)', needs: ['tp', 'bt'],
@@ -525,7 +527,7 @@ function lilleCalc(blocks, idx, d0idx, c) {
   if (!v7.bt) missing.push('BT do dia 7');
   if (!v0.alb) missing.push('Alb do dia 0');
   if (!v0.cr) missing.push('Cr do dia 0');
-  const tp = v0.tp ? v0.tp.v : c.lilleTp;
+  const tp = c.lilleTp > 0 ? c.lilleTp : v0.tp ? v0.tp.v : NaN;
   if (!(tp > 0)) missing.push('TP do dia 0');
   if (missing.length) return { missing };
   const b0 = v0.bt.v * 17.1, b7 = v7.bt.v * 17.1;
@@ -660,8 +662,8 @@ const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | 
     $('resDate').textContent = '· ' + fmtDate(sel.date);
     const rv = resolveValues(blocks, selIdx, +$('carry').value);
     const v = Object.fromEntries(Object.entries(rv).map(([k, x]) => [k, x.v]));
-    if (!(v.tp > 0) && c.tpPac > 0) v.tp = c.tpPac;
-    const tp = $('tpPac'); tp.placeholder = rv.tp ? fmt(rv.tp.v, 1) + ' (lido)' : '';
+    if (c.tpPac > 0) { v.tp = c.tpPac; rv.tp = { v: c.tpPac, raw: 'digitado', from: sel, carried: false, typed: true }; }
+    const tp = $('tpPac'); tp.placeholder = rv.tp && !rv.tp.typed ? fmt(rv.tp.v, 1) + ' (lido)' : '';
     const shorts = [], usedKeys = new Set(), counts = {};
     for (const sc of SCORES) {
       let out, used = '';
@@ -692,7 +694,7 @@ const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | 
 
     const rows = ANALYTES.filter(a => rv[a.k]).map(a => {
       const x = rv[a.k];
-      const origem = x.carried ? `de ${fmtDate(x.from.date)}` : x.gaso ? 'gasometria' : 'nesta data';
+      const origem = x.typed ? 'digitado' : x.carried ? `de ${fmtDate(x.from.date)}` : x.gaso ? 'gasometria' : 'nesta data';
       return `<tr class="${x.carried ? 'carry' : ''}"><td>${a.name}</td><td class="num">${fmt(x.v)} ${a.unit}</td><td>${origem}</td><td class="num">${esc(x.raw)}</td></tr>`;
     });
     $('valsTable').innerHTML = `<thead><tr><th>Exame</th><th>Valor usado</th><th>Origem</th><th>Texto lido</th></tr></thead><tbody>${rows.join('')}</tbody>`;
