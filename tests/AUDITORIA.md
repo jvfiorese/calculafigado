@@ -38,6 +38,21 @@ Child-Pugh, MELD 3.0, FIB-4, fator R, Maddrey, Lille, Glasgow-Blatchford, Rockal
 | Rockall | Rockall et al., Gut 1996 | Idade, choque, comorbidade, diagnóstico, estigmas; pré-endoscópico sem os dois últimos |
 | AIMS65 | Saltzman et al., Gastrointest Endosc 2011 | Alb < 3,0; INR > 1,5; consciência alterada; PAS ≤ 90; idade ≥ 65 |
 
+## Autoanticorpos e IgG lidos dos exames (08/10/2026)
+
+O leitor agora reconhece FAN (ou ANA), anti-músculo liso (AML), anti-LKM1, anti-mitocôndria (AMA, anti-M2), anti-SLA/LP, anti-LC1, p-ANCA e IgG, e preenche os itens do escore de hepatite autoimune. Cada item tem a opção "Dos exames colados" (padrão) e as opções de antes, que valem por cima.
+
+| Item | Regra (Alvarez et al., J Hepatol 1999, tabela 2, adultos) | Como o app lê |
+|---|---|---|
+| FAN, AML ou anti-LKM1 | > 1/80 +3; 1/80 +2; 1/40 +1; < 1/40 0. Vale o maior dos três. | "Não reagente", "NR", "negativo", "< 1/40" contam 0. Título fora da tabela (ex.: 1/60), "reagente" sem título, mais de um título, ou FAN com padrão citoplasmático ou mitótico: não pontua e mostra aviso, salvo se outro dos três já dá > 1/80. |
+| AMA | Positivo −4 | "Reagente"/"positivo" (qualquer título) ou título ≥ 1/40: −4. Negativo: 0. |
+| Outros autoanticorpos definidos | +2, só em quem tem FAN, AML e anti-LKM1 < 1/40 | Anti-SLA/LP, anti-LC1 ou p-ANCA positivo. ANCA sem dizer "p" ou perinuclear não conta. |
+| Globulinas, gamaglobulina ou IgG | × LSN: > 2,0 +3; 1,5 a 2,0 +2; 1,0 a 1,5 +1; < 1,0 0 | Só IgG, em mg/dL (g/L × 100; "1.890" = 1890). LSN padrão 1.600 mg/dL, editável no cartão. Exatamente 1,5 e 2,0 caem em +2; 1,0 cai em +1 (a tabela não define a fronteira). IgG de sorologia (anti-HBc IgG, CMV IgG, UI/mL) é ignorada. |
+
+Escolha nossa, não do artigo: FAN "não reagente" conta como < 1/40 (0), que é o uso habitual, embora a triagem em HEp-2 comece em 1/80 e 1/40 não seja testado. O cartão avisa quando usa essa regra.
+
+Testes (`tests/rodar.js`): referência escrita da tabela do artigo (`haiTitulo`, `haiGlobulinas` em `tests/referencia.js`); 3.000 laudos sorteados em vários formatos de escrita (nomes, separadores, títulos 1/20 a 1/2560, títulos fora da tabela, negativos com e sem limite, IgG em mg/dL e g/L, sorologias IgG no meio); 31 laudos escritos à mão, incluindo os casos ambíguos e armadilhas ("Asma", "Ana Maria", "VDRL 1/16", "IgG4"); e o escore inteiro conferido com a referência quando os itens vêm dos exames.
+
 ## Limites desta auditoria
 
 - A referência foi escrita pela mesma ferramenta que escreveu o app, só que separada e a partir das fontes. Um erro de leitura da fonte repetido nos dois passaria despercebido. Por isso vale conferir à mão, uma vez, alguns casos de cada escore no MDCalc ou na planilha do serviço.

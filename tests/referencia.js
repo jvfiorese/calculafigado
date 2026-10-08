@@ -90,6 +90,23 @@ function haiRevisado(h) {
   return s;
 }
 
+// Itens laboratoriais do escore revisado (Alvarez et al., J Hepatol 1999, tabela 2, adultos):
+// "ANA, SMA or LKM-1: >1:80 +3; 1:80 +2; 1:40 +1; <1:40 0"; "AMA positive −4";
+// "globulins, γ-globulin or IgG (times above normal): >2,0 +3; 1,5–2,0 +2; 1,0–1,5 +1; <1,0 0".
+// Títulos fora dessas linhas (ex.: 1/60) não estão na tabela: devolve null.
+function haiTitulo(t) {
+  const linhas = [[t2 => t2 > 80, 3], [t2 => t2 === 80, 2], [t2 => t2 === 40, 1], [t2 => t2 < 40, 0]];
+  const l = linhas.find(([f]) => f(t));
+  return l ? l[1] : null;
+}
+// Fronteiras: 1,5 e 2,0 caem em "1,5–2,0"; 1,0 cai em "1,0–1,5" (faixas fechadas embaixo)
+function haiGlobulinas(vezesLsn) {
+  if (vezesLsn > 2) return 3;
+  if (vezesLsn >= 1.5) return 2;
+  if (vezesLsn >= 1) return 1;
+  return 0;
+}
+
 // Maddrey (Maddrey 1978; Carithers 1989): 4,6 × (TP − controle) + BT
 function maddrey({ tp, ctl, bt }) { return 4.6 * (tp - ctl) + bt; }
 
@@ -133,4 +150,4 @@ function aims65({ alb, inr, mental, pas, idade }) {
   return [alb < 3.0, inr > 1.5, !!mental, pas <= 90, idade >= 65].filter(Boolean).length;
 }
 
-module.exports = { childPugh, meld, meldNa, meld3, fib4, pageB, fatorR, haiRevisado, maddrey, lille, glasgowBlatchford, rockall, aims65 };
+module.exports = { childPugh, meld, meldNa, meld3, fib4, pageB, fatorR, haiRevisado, haiTitulo, haiGlobulinas, maddrey, lille, glasgowBlatchford, rockall, aims65 };
