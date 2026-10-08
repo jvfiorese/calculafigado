@@ -126,7 +126,7 @@ for (let i = 0; i < N; i++) {
   const ratio = (p.fa / c.faUln) / (p.alt / c.altUln);
   const hr = ref.haiRevisado({ ...h, mulher, faAltRatio: ratio });
   const hc = { ...c, haiFaAlt: 'auto', haiGlob: String(h.glob), haiAuto: String(h.auto), haiAma: h.amaPos ? '-4' : '0', haiViral: h.viralPos ? '-3' : '3',
-    haiDrug: h.drogaPos ? '-4' : '1', haiAlc: String(h.alcool), haiAid: h.outraAutoimune, haiOther: h.outrosAc, haiHla: h.hla, haiBx: true,
+    haiDrug: h.drogaPos ? '-4' : '1', haiAlc: String(h.alcool), haiAid: h.outraAutoimune, haiOther: h.outrosAc ? '2' : '0', haiHla: h.hla, haiBx: true,
     haiInt: h.interface, haiLpl: h.linfoplasm, haiRos: h.rosetas, haiBil: h.biliares, haiAlt: h.outrasAlt, haiTx: h.resposta ? String(h.resposta) : '' };
   const hA = S('hai').calc(v, hc);
   const [def, prob] = h.resposta ? [17, 12] : [15, 10];
@@ -231,6 +231,135 @@ for (let i = 0; i < 1500; i++) {
     const ok = esperado[k] == null ? lido[k] == null : Math.abs(lido[k] - esperado[k]) < 1e-9;
     check('Leitor (formatos sorteados)', ok, `${linha} → ${k}: lido ${lido[k]} esperado ${esperado[k]}`);
   }
+}
+
+/* ===== Hepatite autoimune: autoanticorpos e IgG lidos dos exames ===== */
+// Esperado calculado pela referência (tabela do artigo), nunca pelo app.
+function esperadoHai(ab, iggMgdl, uln) {
+  // por anticorpo: pontos ou null (fora da tabela / sem título: preencher à mão)
+  const tit = r => r.st === 'neg' ? 0 : r.st === 'pos' ? ref.haiTitulo(r.t) : null;
+  const pres = ['fan', 'aml', 'lkm'].filter(k => ab[k]);
+  const pts = pres.map(k => tit(ab[k]));
+  const auto = !pres.length ? null : pts.includes(3) ? 3 : pts.includes(null) ? null : Math.max(...pts);
+  const ama = !ab.ama ? null : ab.ama.st === 'neg' ? 0 : -4;
+  const outs = ['sla', 'panca'].filter(k => ab[k]);
+  const other = outs.some(k => ab[k].st !== 'neg') ? 2 : 0;
+  const glob = iggMgdl == null ? null : ref.haiGlobulinas(iggMgdl / uln);
+  const ambiguos = Object.keys(ab).filter(k => ['fan', 'aml', 'lkm'].includes(k) && tit(ab[k]) == null);
+  return { auto, ama, other, glob, ambiguos };
+}
+const NOMES = {
+  fan: ['FAN', 'Fan', 'FAN (HEp-2)', 'Fator antinúcleo', 'Fator antinúcleo (FAN)', 'ANA', 'fan', 'Anticorpo antinúcleo'],
+  aml: ['AML', 'Anti-músculo liso', 'anti musculo liso', 'SMA', 'Anticorpo antimúsculo liso', 'aml'],
+  lkm: ['Anti-LKM1', 'anti-LKM-1', 'LKM1', 'Anti LKM 1', 'Anti-LKM'],
+  ama: ['AMA', 'Anti-mitocôndria', 'anti mitocondria', 'AMA-M2', 'Anticorpo antimitocôndria', 'ama'],
+  sla: ['Anti-SLA/LP', 'anti-SLA'], panca: ['p-ANCA', 'pANCA'],
+};
+const NEGS = ['não reagente', 'Não Reagente', 'NR', 'negativo', 'Negativo', 'nao reagente', '< 1/40', 'inferior a 1/80', 'não reagente (triagem 1/80)', 'Não detectado'];
+const TITS = [20, 40, 80, 100, 160, 320, 640, 1280, 2560, 60];
+for (let i = 0; i < 3000; i++) {
+  const ab = {}, partes = [];
+  for (const k of Object.keys(NOMES)) {
+    if (rnd() < 0.3) continue;
+    const tipoTit = ['fan', 'aml', 'lkm'].includes(k);
+    const u = rnd();
+    let r, txt;
+    if (u < 0.45) { r = { st: 'neg' }; txt = pick(NEGS); }
+    else if (tipoTit && u < 0.9) {
+      const t = pick(TITS);
+      r = { st: 'pos', t };
+      txt = pick([`reagente 1/${t}`, `Reagente, título 1:${t}`, `1/${t}`, `positivo 1/${t}`, `reagente até 1/${t}`]);
+      if (k === 'fan' && rnd() < 0.5) txt += pick([', padrão nuclear homogêneo', ' nuclear pontilhado fino', ' - padrão nuclear pontilhado grosso']);
+    } else { r = tipoTit ? { st: 'semtit' } : { st: 'pos' }; txt = pick(['reagente', 'positivo', 'Reagente', 'POSITIVO']); }
+    ab[k] = r;
+    partes.push(`${pick(NOMES[k])}${pick([' ', ': ', ' = ', ':'])}${txt}`);
+  }
+  let igg = null;
+  const uln = pick([1600, 1500, 1700, 1650]);
+  if (rnd() < 0.6) {
+    igg = rnd() < 0.3 ? pick([uln, uln * 1.5, uln * 2, uln * 1.5 - 1, uln * 2 + 1, uln - 1]) : Math.round(uni(400, 5000, 0));
+    const fmtIgg = pick([`IgG ${igg}`, `IgG: ${igg} mg/dL`, `IgG ${(igg / 1000).toFixed(3)}`]);
+    if (igg % 10 === 0 && rnd() < 0.3) partes.push(`IgG ${String(igg / 100).replace('.', ',')} g/L`); else partes.push(fmtIgg);
+  }
+  partes.push(`TGO ${Math.round(uni(10, 900, 0))}`, `TGP ${Math.round(uni(10, 900, 0))}`, 'Anti-HBc IgG não reagente', 'CMV IgG 250 UA/mL');
+  for (let j = partes.length - 1; j > 0; j--) { const t = Math.floor(rnd() * (j + 1)); [partes[j], partes[t]] = [partes[t], partes[j]]; }
+  const linha = `(${String(1 + (i % 28)).padStart(2, '0')}/0${1 + (i % 9)}/26): ` + partes.join(pick([' | ', ' // ', '\n', '; ', ', ']));
+  const bl = app.parseLabs(linha);
+  const v = Object.fromEntries(Object.entries(bl[0].values).map(([k, x]) => [k, x.v]));
+  const L = app.haiLabs(v, { iggUln: uln });
+  const e = esperadoHai(ab, igg, uln);
+  const det = `${JSON.stringify(linha)} lido ${JSON.stringify(v)}`;
+  check('HAI: FAN/AML/LKM1 dos exames', L.auto.pts === e.auto, `${det} app ${L.auto.pts} ref ${e.auto}`);
+  check('HAI: AMA dos exames', L.ama.pts === e.ama, `${det} app ${L.ama.pts} ref ${e.ama}`);
+  check('HAI: outros autoanticorpos', L.other.pts === e.other, `${det} app ${L.other.pts} ref ${e.other}`);
+  check('HAI: IgG dos exames', L.glob.pts === e.glob && (igg == null || v.igg === igg), `${det} app ${L.glob.pts} ref ${e.glob}`);
+  const avisos = bl[0].warnings.join(' ');
+  for (const k of ['fan', 'aml', 'lkm']) {
+    const nome = { fan: 'FAN', aml: 'Anti-músculo liso', lkm: 'Anti-LKM1' }[k];
+    check('HAI: aviso quando ambíguo', e.ambiguos.includes(k) === avisos.includes(nome + (k === 'fan' ? ':' : '')), `${det} avisos ${avisos}`);
+  }
+  // escore inteiro pela referência, com os itens que vêm dos exames
+  if (e.auto != null && e.ama != null && e.glob != null) {
+    const sexo = rnd() < 0.5 ? 'F' : 'M';
+    const c = { sexo, iggUln: uln, faUln: 300, altUln: 32, haiFaAlt: '0', haiGlob: 'auto', haiAuto: 'auto', haiAma: 'auto', haiOther: 'auto',
+      haiViral: '3', haiDrug: '1', haiAlc: '2', haiBx: true, haiInt: true, haiTx: '' };
+    const hr = ref.haiRevisado({ mulher: sexo === 'F', faAltRatio: 2, glob: e.glob, auto: e.auto, amaPos: e.ama === -4, viralPos: false, drogaPos: false,
+      alcool: 2, outrosAc: e.other === 2, interface: true, resposta: 0 });
+    const hA = S('hai').calc(v, c);
+    check('HAI: escore com itens dos exames', hA.value === hr && hA.pill.startsWith('HAI '), `${det} app ${hA.value} ${hA.pill} ref ${hr}`);
+  }
+}
+
+// Laudos escritos à mão, com o resultado esperado lido da tabela do artigo
+const LAUDOS = [
+  ['(15/09/26): FAN reagente 1/160 padrão nuclear pontilhado fino | AML não reagente | AMA não reagente | Anti-LKM1 não reagente', { auto: 3, ama: 0 }],
+  ['FAN: Não reagente; Anti-músculo liso: Reagente 1/80; Anti-mitocôndria: Negativo', { auto: 2, ama: 0 }],
+  ['FAN NR, AML NR, AMA reagente 1/320, anti-LKM1 NR', { auto: 0, ama: -4 }],
+  ['FAN < 1/40 AML 1/40', { auto: 1 }],
+  ['Fator antinúcleo (FAN) HEp-2: reagente até 1/640, nuclear homogêneo', { auto: 3 }],
+  ['FAN: Reagente\nTítulo: 1/320\nPadrão: nuclear homogêneo\nTGO 300', { auto: 3, ast: 300 }],
+  ['ANA 1:160', { auto: 3 }],
+  ['AMA-M2 positivo', { ama: -4 }],
+  ['anticorpo anti-mitocondria: nao reagente', { ama: 0 }],
+  ['anti-SLA/LP reagente, FAN NR, AML NR, anti-LKM1 NR', { auto: 0, other: 2 }],
+  ['FAN reagente 1/640 | p-ANCA positivo', { auto: 3, other: 2 }],
+  ['FAN reagente', { auto: null, aviso: true }],
+  ['FAN 1/160 citoplasmático reticular', { auto: null, aviso: true }],
+  ['FAN: reagente 1/80 e 1/320', { auto: null, aviso: true }],
+  ['AML reagente 1/60', { auto: null, aviso: true }],
+  ['FAN reagente 1/160 | AML reagente', { auto: 3, aviso: true }],
+  ['FAN reagente, VDRL 1/16', { auto: null, aviso: true }],
+  ['FAN reagente VDRL 1/16', { auto: null, aviso: true }],
+  ['FAN Nuclear: 1/160 Citoplasmático: 1/80', { auto: null, aviso: true }],
+  ['FAN: nuclear 1/160; citoplasmático 1/1280', { auto: null, aviso: true }],
+  ['FAN 1:80 ou 1:160', { auto: null, aviso: true }],
+  ['FAN: reagente, padrão nuclear pontilhado fino, título 1/320; TGO 40', { auto: 3, ast: 40 }],
+  ['AMA NR, Anti-HBc IgG não reagente, IgG 2000', { ama: 0, igg: 2000, glob: 1 }],
+  ['FAN reagente 1/80 | AML reagente', { auto: null, aviso: true }],
+  ['IgG 2400', { glob: 2, igg: 2400 }],
+  ['IgG 2.350', { glob: 1, igg: 2350 }],
+  ['IgG 23,5 g/L', { glob: 1, igg: 2350 }],
+  ['IgG: 1.890 mg/dL', { glob: 1, igg: 1890 }],
+  ['Imunoglobulinas: IgG 3300, IgA 300', { glob: 3, igg: 3300 }],
+  ['Anti-HBc IgG reagente 12,3 | CMV IgG 250 UA/mL | Toxoplasmose: IgG 300 UI/mL | IgG4 150', { glob: null, igg: undefined }],
+  ['Asma: não. Ana Maria, TGO 30', { auto: null, ama: null, ast: 30 }],
+];
+LAUDOS.forEach(([txt, e], i) => {
+  const b = app.parseLabs(txt)[0] || { values: {}, warnings: [] };
+  const v = Object.fromEntries(Object.entries(b.values).map(([k, x]) => [k, x.v]));
+  const L = app.haiLabs(v, { iggUln: 1600 });
+  const ok = ('auto' in e ? L.auto.pts === e.auto : true) && ('ama' in e ? L.ama.pts === e.ama : true) && ('other' in e ? L.other.pts === e.other : true)
+    && ('glob' in e ? L.glob.pts === e.glob : true) && ('igg' in e ? v.igg === e.igg : true) && ('ast' in e ? v.ast === e.ast : true)
+    && (b.warnings.length > 0) === !!e.aviso;
+  check('HAI: laudos escritos', ok, `laudo ${i + 1} ${JSON.stringify(txt)}: lido ${JSON.stringify(v)} auto ${L.auto.pts} ama ${L.ama.pts} outros ${L.other.pts} glob ${L.glob.pts} avisos ${JSON.stringify(b.warnings)}`);
+});
+// Itens à mão continuam valendo por cima dos exames
+{
+  const v = Object.fromEntries(Object.entries(app.parseLabs('FAN reagente 1/160 | AMA NR')[0].values).map(([k, x]) => [k, x.v]));
+  const c = { sexo: 'M', haiFaAlt: '0', haiGlob: '0', haiAuto: '1', haiAma: '-4', haiOther: '0', haiViral: '3', haiDrug: '1', haiAlc: '2', haiBx: true, haiInt: true, haiTx: '' };
+  const hA = S('hai').calc(v, c);
+  const hr = ref.haiRevisado({ mulher: false, faAltRatio: 2, glob: 0, auto: 1, amaPos: true, viralPos: false, drogaPos: false, alcool: 2, interface: true, resposta: 0 });
+  check('HAI: laudos escritos', hA.value === hr, `escolha à mão ignorada: app ${hA.value} ref ${hr}`);
 }
 
 /* ===== Resumo ===== */

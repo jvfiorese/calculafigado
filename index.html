@@ -236,13 +236,105 @@ const ANALYTES = [
   { k:'hb',   lab:'Hb',   name:'Hemoglobina', unit:'g/dL', alias:'hemoglobina|hb', min:2, max:25 },
   { k:'leuco',lab:'Leuco',name:'Leucócitos', unit:'mil/µL', alias:'leuc[óo]citos|leuco|leu|wbc', min:0.1, max:500000, norm:v => v >= 1000 ? v/1000 : v },
   { k:'pcr',  lab:'PCR',  name:'PCR', unit:'mg/dL', alias:'pcr', min:0, max:600 },
+  { k:'igg',  lab:'IgG',  name:'IgG', unit:'mg/dL', alias:'igg(?![1-4])(?:\\s+(?:total|s[ée]rica))?|imunoglobulina\\s+g(?:\\s+total)?', min:100, max:10000, fix:fixIgg },
   { k:'tp',   lab:'TP',   name:'Tempo de protrombina', unit:'s', alias:'tap\\s*\\(\\s*tempo\\s*\\)|tp\\s*\\(\\s*s\\s*\\)|tempo\\s+de\\s+protrombina|tp\\s*seg\\w*', min:5, max:200, noParen:true },
 ];
 ANALYTES.forEach(a => {
   const paren = a.noParen ? '' : '(?:\\([^)\\n]{0,12}\\)\\s*)?';
   a.re = new RegExp(`(?<![${L}])(?:${a.alias})(?![${L}])\\s*${paren}[:=]?\\s*(?:[<>]=?\\s*)?(\\d+(?:[.,]\\d+)*)(\\s*mil(?![${L}]))?`, 'gi');
 });
-const BYK = Object.fromEntries(ANALYTES.map(a => [a.k, a]));
+
+/* Autoanticorpos (resultado qualitativo ou título), usados no escore de hepatite autoimune */
+const AUTOAB = [
+  { k:'fan',   lab:'FAN',    name:'FAN', kind:'tit', alias:'fan|ana|fator\\s+anti-?\\s*n[úu]cleo|anticorpos?\\s+anti-?\\s*n[úu]cleo|anti-?\\s*n[úu]cleo' },
+  { k:'aml',   lab:'AML',    name:'Anti-músculo liso (AML)', kind:'tit', alias:'aml|sma|anticorpos?\\s+anti-?\\s*m[úu]sculo\\s+liso|anti-?\\s*m[úu]sculo\\s+liso' },
+  { k:'lkm',   lab:'LKM1',   name:'Anti-LKM1', kind:'tit', alias:'anti-?\\s*lkm-?\\s*1|lkm-?\\s*1|anti-?\\s*lkm(?!-?\\s*\\d)' },
+  { k:'ama',   lab:'AMA',    name:'Anti-mitocôndria (AMA)', kind:'ama', alias:'ama(?:-?\\s*m2)?|anti-?\\s*m2|anticorpos?\\s+anti-?\\s*mitoc[ôo]ndri\\w*|anti-?\\s*mitoc[ôo]ndri\\w*' },
+  { k:'sla',   lab:'SLA/LP', name:'Anti-SLA/LP', kind:'out', alias:'anti-?\\s*sla(?:\\s*/\\s*lp)?|sla\\s*/\\s*lp' },
+  { k:'lc1',   lab:'LC1',    name:'Anti-LC1', kind:'out', alias:'anti-?\\s*lc-?\\s*1' },
+  { k:'panca', lab:'pANCA',  name:'p-ANCA', kind:'out', alias:'p-?\\s*anca' },
+];
+AUTOAB.forEach(a => { a.ab = true; a.re = new RegExp(`(?<![${L}\\d])(?:${a.alias})(?![${L}\\d])`, 'gi'); });
+const ALLK = ANALYTES.concat(AUTOAB);
+const BYK = Object.fromEntries(ALLK.map(a => [a.k, a]));
+
+// IgG em mg/dL. Sem unidade: < 10 é g/dL (ou milhar com ponto, 1.250), < 100 é g/L.
+// Descarta IgG de sorologia (anti-HBc IgG, CMV IgG...) e resultados em UI/mL, índice etc.
+function fixIgg(v, text, m) {
+  const before = text.slice(Math.max(0, m.index - 30), m.index);
+  const prev = before.match(new RegExp(`([${L}][${L}\\w-]*)[ \\t-]*$`));
+  if (prev && !/^(?:reagente|reag|nr|negativo|positivo|neg|pos)$/i.test(prev[1])) return NaN;
+  const after = text.slice(m.index + m[0].length, m.index + m[0].length + 20);
+  const u = after.match(/^\s*(mg\s*\/\s*dl|g\s*\/\s*dl|g\s*\/\s*l|ui|u|ua|au|iu|index|[íi]ndice|s\s*\/\s*co|ratio|%)(?![a-z])/i);
+  const unit = u ? u[1].toLowerCase().replace(/\s/g, '') : '';
+  const r = x => Math.round(x * 100) / 100;
+  if (unit === 'mg/dl') return v >= 100 ? v : /^\d{1,2}\.\d{3}$/.test(m[1]) ? r(v * 1000) : NaN;
+  if (unit === 'g/dl') return r(v * 1000);
+  if (unit === 'g/l') return r(v * 100);
+  if (unit) return NaN;
+  return v < 10 ? r(v * 1000) : v < 100 ? r(v * 100) : v;
+}
+
+const W = 'a-zà-ÿ';
+const AB_NEG = new RegExp(`n[ãa]o[\\s-]*(?:reag\\w*|reat\\w*|detect\\w*)|(?<![${W}])(?:negativ\\w*|neg|nr|ausente|indetect\\w*)(?![${W}])`, 'g');
+const AB_POS = new RegExp(`(?<![${W}])(?:reagente|reag|reativo|positiv\\w*|pos|detectad\\w*|presente)(?![${W}])`);
+const AB_BOUND = /(?:<|inferior\s+a|menor\s+(?:que|do\s+que))\s*(?:1\s*[:/]\s*)?(\d{2,5})(?![\d/])/g;
+const AB_TIT = new RegExp(`(?<![\\d/.,])1\\s*[:/]\\s*(\\d{2,5})(?![\\d/])|t[íi]tulo\\s*:?\\s*(?:de\\s*)?(\\d{2,5})(?![\\d/])`, 'g');
+
+// Onde termina o resultado de um anticorpo: |, //, " / ", quebra de linha, vírgula ou ponto e vírgula
+// (salvo se o que vem depois continua o laudo: título, padrão...) ou outro exame com número (TGO 32, VDRL 1/8)
+const AB_CONT = `(?:t[íi]tulo|padr[ãa]o|nuclear|citoplasm|pontilhad|homog|dilui|triagem|at[ée]\\s|1\\s*[:/]|reag|positiv|negativ|n[ãa]o\\s|nr\\b|resultado|valor|leitura|ac-?\\d)`;
+const AB_OK = `t[íi]tulo|at[ée]|triagem|dilui[çc][ãa]o|reagente|reag|positivo|resultado|valor|leitura|de|a|que|e|ou|em|com|hep|ac|m|padr[ãa]o|nuclear|citoplasm[${L}]*|mit[óo]tico`;
+const AB_END = new RegExp(`\\||\\/\\/|\\s\\/\\s|\\n(?!\\s*${AB_CONT})|[,;](?!\\s*${AB_CONT})|(?<![${L}])(?!(?:${AB_OK})(?![${L}]))[${L}][${L}\\-]*\\s*[:=]?\\s*[<>]?\\s*\\d`, 'i');
+
+// Lê o trecho depois do nome do anticorpo. Na dúvida devolve 'amb' (preencher à mão).
+function classifyAb(a, seg) {
+  const s = seg.toLowerCase();
+  let bound = null;
+  const s2 = s.replace(AB_BOUND, (x, n) => { bound = bound == null ? +n : Math.min(bound, +n); return ' '; });
+  AB_NEG.lastIndex = 0;
+  const hasNeg = AB_NEG.test(s2) || bound != null;
+  const s3 = s2.replace(AB_NEG, ' ');
+  const word = AB_POS.test(s3);
+  const tit = [...new Set([...s2.matchAll(AB_TIT)].map(x => +(x[1] || x[2])))];
+  if (hasNeg && word) return { res: 'amb', why: 'o texto diz reagente e não reagente' };
+  if (hasNeg) return { res: 'neg', bound: bound ?? (tit.length ? Math.min(...tit) : null) };
+  if (!word && !tit.length) return { res: 'amb', why: 'resultado não reconhecido' };
+  if (tit.length > 1) return { res: 'amb', why: 'mais de um título' };
+  if (a.k === 'fan' && /citoplasm|mit[óo]tic/.test(s)) return { res: 'amb', why: 'padrão citoplasmático ou mitótico; confira se há padrão nuclear' };
+  return { res: 'pos', titre: tit.length ? tit[0] : null, word };
+}
+
+function extractAutoab(text) {
+  const hits = [];
+  for (const a of AUTOAB) {
+    a.re.lastIndex = 0;
+    let m;
+    while ((m = a.re.exec(text))) {
+      if (a.k === 'fan' && /^ana$/i.test(m[0]) && m[0] !== 'ANA') continue; // "Ana" é nome
+      hits.push({ a, start: m.index, end: m.index + m[0].length, name: m[0] });
+    }
+  }
+  hits.sort((x, y) => x.start - y.start || y.end - x.end);
+  // "Fator antinúcleo (FAN): ..." conta uma vez só
+  const kept = hits.filter((h, i) => !hits.slice(0, i).some(o => h.start < o.end))
+    .filter((h, i, arr) => !(arr[i + 1] && arr[i + 1].a === h.a && /^[\s(:-]*$/.test(text.slice(h.end, arr[i + 1].start))));
+  const out = {};
+  kept.forEach((h, i) => {
+    let seg = text.slice(h.end, Math.min(h.end + 200, i + 1 < kept.length ? kept[i + 1].start : text.length));
+    const cut = seg.search(AB_END);
+    if (cut >= 0) seg = seg.slice(0, cut);
+    const r = classifyAb(h.a, seg.replace(/^[\s)]*\([^)\n]{0,20}\)/, ' '));
+    const raw = (h.name + seg).replace(/\s+/g, ' ').trim().slice(0, 90);
+    (out[h.a.k] = out[h.a.k] || []).push({ v: r, raw, low: false, sig: JSON.stringify(r) });
+  });
+  return out;
+}
+function abText(r) {
+  if (r.res === 'neg') return 'não reagente' + (r.bound ? ` (< 1/${r.bound})` : '');
+  if (r.res === 'pos') return r.titre ? `reagente 1/${r.titre}` : 'reagente, sem título';
+  return 'não reconhecido';
+}
 
 function parseNum(s) {
   const seps = s.match(/[.,]/g) || [];
@@ -262,13 +354,14 @@ function extractValues(text, allLow) {
     while ((m = a.re.exec(text))) {
       let v = parseNum(m[1]);
       if (m[2]) v *= 1000;
+      if (a.fix) v = a.fix(v, text, m);
       if (a.norm) v = a.norm(v);
       if (!isFinite(v) || v < a.min || v > a.max) continue;
       const low = allLow || (gasoIdx >= 0 && m.index > gasoIdx);
       (out[a.k] = out[a.k] || []).push({ v, raw: m[0].trim(), low });
     }
   }
-  return out;
+  return Object.assign(out, extractAutoab(text));
 }
 
 const DATE_RE = /(?<!\d)(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})(?!\d)/g;
@@ -305,8 +398,15 @@ function parseLabs(text) {
       const main = list.filter(x => !x.low);
       const pick = main[0] || list[0];
       values[k] = { v: pick.v, raw: pick.raw, gaso: pick.low };
-      const distinct = [...new Set(main.map(x => x.v))];
+      const distinct = [...new Set(main.map(x => x.sig ?? x.v))];
       if (distinct.length > 1) warnings.push(`${BYK[k].name}: mais de um valor (${main.map(x => x.raw).join(' / ')}). Usei o primeiro.`);
+      if (BYK[k].ab) {
+        const r = pick.v, a = BYK[k];
+        // ambíguo: não pontua sozinho (o escore usa o maior título, então outro anticorpo > 1/80 ainda decide)
+        const why = r.res === 'amb' ? r.why : a.kind === 'tit' && titPts(r) == null ? (r.titre ? `título 1/${r.titre} fora da tabela do escore` : 'reagente sem título')
+          : a.kind !== 'tit' && posOf(r) == null ? `título 1/${r.titre} baixo, sem dizer se é reagente` : '';
+        if (why) warnings.push(`${a.name}: ${why} ("${pick.raw}"). Não usei esse resultado; se precisar, marque o item à mão no escore de hepatite autoimune.`);
+      }
     }
     return { key: e.key, date: e.date, values, warnings };
   });
@@ -317,7 +417,7 @@ function parseLabs(text) {
 function resolveValues(blocks, idx, carryDays) {
   const sel = blocks[idx];
   const res = {};
-  for (const a of ANALYTES) {
+  for (const a of ALLK) {
     if (sel.values[a.k]) { res[a.k] = { ...sel.values[a.k], from: sel, carried: false }; continue; }
     if (!carryDays || !sel.date) continue;
     for (let j = idx + 1; j < blocks.length; j++) {
@@ -355,6 +455,50 @@ function calcMeld3(v, c) {
 }
 const meldMort = s => s <= 9 ? '1,9%' : s <= 19 ? '6,0%' : s <= 29 ? '19,6%' : s <= 39 ? '52,6%' : '71,3%';
 const ureaMmol = ur => ur / 6.006;
+
+/* Hepatite autoimune: itens que saem dos exames (Alvarez et al., J Hepatol 1999) */
+// FAN, AML ou anti-LKM1 (adulto): > 1/80 = 3, 1/80 = 2, 1/40 = 1, < 1/40 = 0. Título fora da tabela: à mão.
+function titPts(r) {
+  if (r.res === 'neg') return r.bound == null || r.bound <= 80 ? 0 : null;
+  if (r.res !== 'pos' || r.titre == null) return null;
+  const t = r.titre;
+  return t > 80 ? 3 : t === 80 ? 2 : t === 40 ? 1 : t < 40 ? 0 : null;
+}
+// AMA ou outro autoanticorpo: positivo pelo laudo ("reagente") ou título ≥ 1/40
+const posOf = r => r.res === 'neg' ? false : r.res === 'pos' && (r.word || r.titre >= 40) ? true : null;
+function haiLabs(v, c) {
+  const notes = [];
+  const show = k => `${BYK[k].lab} ${abText(v[k])}`;
+  // FAN, AML, anti-LKM1: vale o maior título
+  const tri = ['fan', 'aml', 'lkm'].filter(k => v[k]);
+  let auto;
+  if (!tri.length) auto = { pts: null, why: 'não estão nos exames' };
+  else {
+    const pts = tri.map(k => titPts(v[k]));
+    const amb = tri.filter((k, i) => pts[i] == null);
+    if (pts.includes(3)) auto = { pts: 3, txt: tri.filter((k, i) => pts[i] === 3).map(show).join(', ') };
+    else if (amb.length) auto = { pts: null, why: amb.map(k => `${BYK[k].lab} ${v[k].res === 'amb' ? v[k].why : abText(v[k])}`).join('; ') };
+    else auto = { pts: Math.max(...pts), txt: tri.map(show).join(', ') };
+    if (auto.pts != null) {
+      const miss = ['fan', 'aml', 'lkm'].filter(k => !v[k]).map(k => BYK[k].lab);
+      if (miss.length && auto.pts < 3) notes.push(`Sem ${miss.join(' e ')} nos exames; considerei só ${tri.map(k => BYK[k].lab).join(' e ')}.`);
+      if (auto.pts === 0 && tri.some(k => v[k].res === 'neg' && !(v[k].bound <= 40))) notes.push('Não reagente contado como < 1/40 (0), como é o usual; na triagem em 1/80, 1/40 não é testado.');
+    }
+  }
+  const ama = !v.ama ? { pts: null, why: 'não está nos exames' }
+    : posOf(v.ama) == null ? { pts: null, why: v.ama.res === 'amb' ? v.ama.why : abText(v.ama) } : { pts: posOf(v.ama) ? -4 : 0, txt: show('ama') };
+  let glob = { pts: null, why: 'IgG não está nos exames' };
+  if (v.igg > 0) {
+    const uln = c.iggUln > 0 ? c.iggUln : 1600, r = v.igg / uln;
+    glob = { pts: r > 2 ? 3 : r >= 1.5 ? 2 : r >= 1 ? 1 : 0, txt: `IgG ${fmt(v.igg, 0)} mg/dL = ${fmt(r, 2)} × LSN` };
+  }
+  const outs = ['sla', 'lc1', 'panca'].filter(k => v[k]);
+  const op = outs.map(k => posOf(v[k]));
+  const other = op.includes(true) ? { pts: 2, txt: outs.filter((k, i) => op[i]).map(show).join(', ') }
+    : op.includes(null) ? { pts: null, why: outs.filter((k, i) => op[i] == null).map(k => `${BYK[k].lab} ${v[k].res === 'amb' ? v[k].why : abText(v[k])}`).join('; ') }
+    : { pts: 0, txt: outs.length ? outs.map(show).join(', ') : '' };
+  return { auto, ama, glob, other, notes };
+}
 
 /* Campos de cada calculadora: [tipo, id, rótulo, opções/valor padrão] */
 const TABS = [
@@ -421,14 +565,15 @@ const SCORES = [
     } },
   { id: 'hai', tab: 'hepato', name: 'Hepatite autoimune (IAIHG 1999)', needs: ['sexo'],
     inputs: [['sel', 'haiFaAlt', 'FA/TGP (em × LSN)', [['auto', 'Calcular dos exames (LSN do Fator R)'], ['2', '< 1,5 (+2)'], ['0', '1,5 a 3,0 (0)'], ['-2', '> 3,0 (−2)']]],
-             ['sel', 'haiGlob', 'Globulinas, gamaglobulina ou IgG (× LSN)', [['', '—'], ['3', '> 2,0 (+3)'], ['2', '1,5 a 2,0 (+2)'], ['1', '1,0 a 1,5 (+1)'], ['0', '< 1,0 (0)']]],
-             ['sel', 'haiAuto', 'FAN, AML ou anti-LKM1', [['', '—'], ['3', '> 1/80 (+3)'], ['2', '1/80 (+2)'], ['1', '1/40 (+1)'], ['0', '< 1/40 (0)']]],
-             ['sel', 'haiAma', 'AMA', [['', '—'], ['0', 'Negativo (0)'], ['-4', 'Positivo (−4)']]],
+             ['sel', 'haiGlob', 'Globulinas, gamaglobulina ou IgG (× LSN)', [['auto', 'IgG dos exames colados'], ['3', '> 2,0 (+3)'], ['2', '1,5 a 2,0 (+2)'], ['1', '1,0 a 1,5 (+1)'], ['0', '< 1,0 (0)']]],
+             ['num', 'iggUln', 'LSN IgG (mg/dL)', 1600],
+             ['sel', 'haiAuto', 'FAN, AML ou anti-LKM1 (maior título)', [['auto', 'Dos exames colados'], ['3', '> 1/80 (+3)'], ['2', '1/80 (+2)'], ['1', '1/40 (+1)'], ['0', '< 1/40 (0)']]],
+             ['sel', 'haiAma', 'AMA', [['auto', 'Dos exames colados'], ['0', 'Negativo (0)'], ['-4', 'Positivo (−4)']]],
              ['sel', 'haiViral', 'Marcadores de hepatite viral', [['', '—'], ['3', 'Negativos (+3)'], ['-3', 'Positivos (−3)']]],
              ['sel', 'haiDrug', 'Droga hepatotóxica recente', [['', '—'], ['1', 'Não (+1)'], ['-4', 'Sim (−4)']]],
              ['sel', 'haiAlc', 'Álcool', [['', '—'], ['2', '< 25 g/dia (+2)'], ['0', '25 a 60 g/dia (0)'], ['-2', '> 60 g/dia (−2)']]],
              ['chk', 'haiAid', 'Outra doença autoimune no paciente ou em parente de 1º grau (+2)'],
-             ['chk', 'haiOther', 'Outros autoanticorpos definidos positivos (anti-SLA/LP, pANCA etc.) (+2, só se FAN, AML e anti-LKM1 < 1/40)'],
+             ['sel', 'haiOther', 'Outros autoanticorpos definidos (anti-SLA/LP, anti-LC1, p-ANCA): +2 só se FAN, AML e anti-LKM1 < 1/40', [['auto', 'Dos exames colados'], ['0', 'Negativos ou não feitos (0)'], ['2', 'Algum positivo (+2)']]],
              ['chk', 'haiHla', 'HLA DR3 ou DR4 (+1)'],
              ['chk', 'haiBx', 'Biópsia feita (sem interface, infiltrado linfoplasmocitário nem rosetas: −5)'],
              ['chk', 'haiInt', 'Hepatite de interface (+3)'],
@@ -446,11 +591,23 @@ const SCORES = [
         else { fa = 0; pend.push('FA/TGP'); }
       }
       s += +fa;
-      [['haiGlob', 'globulinas'], ['haiAuto', 'FAN/AML/LKM1'], ['haiAma', 'AMA'], ['haiViral', 'marcadores virais'], ['haiDrug', 'drogas'], ['haiAlc', 'álcool']]
-        .forEach(([k, l]) => { if (c[k] === '' || c[k] == null) pend.push(l); else s += +c[k]; });
+      const lab = haiLabs(v, c), got = {}, fromLab = [];
+      [['haiGlob', 'globulinas', 'glob'], ['haiAuto', 'FAN/AML/LKM1', 'auto'], ['haiAma', 'AMA', 'ama'], ['haiOther', 'outros autoanticorpos', 'other'],
+       ['haiViral', 'marcadores virais'], ['haiDrug', 'drogas'], ['haiAlc', 'álcool']].forEach(([k, l, lk]) => {
+        let x = c[k];
+        if (k === 'haiOther' && typeof x === 'boolean') x = x ? 2 : 0;
+        if (lk && x === 'auto') {
+          const r = lab[lk];
+          if (r.pts == null) { pend.push(l); if (r.why) fromLab.push(`${l} sem pontuar (${r.why})`); return; }
+          x = r.pts;
+          if (r.txt) fromLab.push(`${r.txt} → ${r.pts > 0 ? '+' : ''}${String(r.pts).replace('-', '−')}`);
+        }
+        if (x === '' || x == null) { pend.push(l); return; }
+        got[k] = +x;
+      });
+      const otherIgnored = got.haiOther === 2 && got.haiAuto !== 0;
+      for (const [k, x] of Object.entries(got)) if (k !== 'haiOther' || !otherIgnored) s += x;
       if (c.haiAid) s += 2;
-      const otherIgnored = c.haiOther && c.haiAuto !== '0';
-      if (c.haiOther && !otherIgnored) s += 2;
       if (c.haiHla) s += 1;
       // −5 vale quando faltam os três achados típicos, mesmo com alterações biliares ou outras (Alvarez 1999)
       const hxPos = (c.haiInt ? 3 : 0) + (c.haiLpl ? 1 : 0) + (c.haiRos ? 1 : 0);
@@ -461,7 +618,7 @@ const SCORES = [
       const [def, prob] = post ? [17, 12] : [15, 10];
       const t = s > def ? ['crit', 'Definitiva'] : s >= prob ? ['warn', 'Provável'] : ['ok', 'Improvável'];
       return { value: s, tone: pend.length ? 'partial' : t[0], pill: pend.length ? `Parcial (${pend.length} itens em branco)` : `HAI ${t[1].toLowerCase()}`,
-        interp: `${post ? 'Pós-tratamento' : 'Pré-tratamento'}: definitiva > ${def}, provável ${prob} a ${def}.${otherIgnored ? ' Outros autoanticorpos não pontuados porque FAN, AML ou anti-LKM1 não está marcado como < 1/40.' : ''}${pend.length ? ` Sem pontuar: ${pend.join(', ')}.` : ''}`,
+        interp: `${post ? 'Pós-tratamento' : 'Pré-tratamento'}: definitiva > ${def}, provável ${prob} a ${def}.${fromLab.length ? ` Dos exames: ${fromLab.join('; ')}.` : ''}${lab.notes.length ? ` ${lab.notes.join(' ')}` : ''}${c.abElsewhere && c.abElsewhere.length ? ` Há autoanticorpos em ${c.abElsewhere.join(', ')}, fora desta data: escolha essa data ou aumente o prazo para completar.` : ''}${otherIgnored ? ' Outros autoanticorpos não pontuados porque FAN, AML ou anti-LKM1 não está < 1/40.' : ''}${pend.length ? ` Sem pontuar: ${pend.join(', ')}.` : ''}`,
         short: pend.length ? null : `Escore HAI ${s} (${t[1].toLowerCase()})` };
     } },
   { id: 'maddrey', tab: 'alcool', name: 'Maddrey (FD)', needs: ['tp', 'bt'],
@@ -544,7 +701,7 @@ function fmt(x, d) {
 }
 function fmtDate(d) { return d ? d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Sem data'; }
 
-if (typeof module !== 'undefined') module.exports = { parseLabs, resolveValues, SCORES, lilleCalc, parseNum, missingOf };
+if (typeof module !== 'undefined') module.exports = { parseLabs, resolveValues, SCORES, lilleCalc, parseNum, missingOf, haiLabs };
 
 /* ===== Interface ===== */
 if (typeof document !== 'undefined') {
@@ -563,7 +720,7 @@ const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | 
     if (type === 'seg') return `<div><div class="lbl">${label}</div><div class="seg" role="radiogroup" aria-label="${label}">${opts.map(([val, t]) =>
       `<input type="radio" name="${id}" id="${id}-${val}" value="${val}" ${val === def ? 'checked' : ''}><label for="${id}-${val}">${t}</label>`).join('')}</div></div>`;
     if (type === 'chk') return `<label class="check" for="${id}"><input type="checkbox" id="${id}"> ${label}</label>`;
-    if (type === 'num') return `<label class="check" for="${id}">${label} <input type="number" id="${id}" step="0.1" inputmode="decimal" value="${def}"></label>`;
+    if (type === 'num') return `<label class="check" for="${id}">${label} <input type="number" id="${id}" step="0.1" inputmode="decimal" value="${opts}"></label>`;
     if (type === 'sel') return `<label class="lbl" for="${id}">${label}</label><select id="${id}">${opts.map(([val, t]) => `<option value="${val}">${t}</option>`).join('')}</select>`;
   }
 
@@ -593,8 +750,8 @@ const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | 
       altUln: num('altUln'), faUln: num('faUln'), tpPac: num('tpPac'), tpCtl: num('tpCtl'), lilleTp: num('lilleTp'),
       pas: num('pas'), fc: num('fc'), melena: chk('melena'), sincope: chk('sincope'), hepat: chk('hepat'), icc: chk('icc'),
       comorb: $('comorb').value, diag: $('diag').value, srh: $('srh').value, mental: chk('mental'),
-      haiFaAlt: $('haiFaAlt').value, haiGlob: $('haiGlob').value, haiAuto: $('haiAuto').value, haiAma: $('haiAma').value, haiViral: $('haiViral').value, haiDrug: $('haiDrug').value, haiAlc: $('haiAlc').value, haiTx: $('haiTx').value,
-      haiAid: chk('haiAid'), haiOther: chk('haiOther'), haiHla: chk('haiHla'), haiBx: chk('haiBx'), haiInt: chk('haiInt'), haiLpl: chk('haiLpl'), haiRos: chk('haiRos'), haiBil: chk('haiBil'), haiAlt: chk('haiAlt'),
+      haiFaAlt: $('haiFaAlt').value, haiGlob: $('haiGlob').value, iggUln: num('iggUln'), haiOther: $('haiOther').value, haiAuto: $('haiAuto').value, haiAma: $('haiAma').value, haiViral: $('haiViral').value, haiDrug: $('haiDrug').value, haiAlc: $('haiAlc').value, haiTx: $('haiTx').value,
+      haiAid: chk('haiAid'), haiHla: chk('haiHla'), haiBx: chk('haiBx'), haiInt: chk('haiInt'), haiLpl: chk('haiLpl'), haiRos: chk('haiRos'), haiBil: chk('haiBil'), haiAlt: chk('haiAlt'),
     };
   }
 
@@ -631,7 +788,7 @@ const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | 
   function usedLine(keys, rv) {
     return keys.filter(k => rv[k]).map(k => {
       const x = rv[k];
-      const txt = `${BYK[k].lab} ${fmt(x.v)}`;
+      const txt = `${BYK[k].lab} ${BYK[k].ab ? abText(x.v) : fmt(x.v)}`;
       const note = x.carried ? ` (${fmtDate(x.from.date).slice(0, 5)})` : x.gaso ? ' (gaso)' : '';
       return x.carried ? `<span class="carry">${txt}${note}</span>` : txt + note;
     }).join(' · ');
@@ -664,6 +821,7 @@ const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | 
     const v = Object.fromEntries(Object.entries(rv).map(([k, x]) => [k, x.v]));
     if (c.tpPac > 0) { v.tp = c.tpPac; rv.tp = { v: c.tpPac, raw: 'digitado', from: sel, carried: false, typed: true }; }
     const tp = $('tpPac'); tp.placeholder = rv.tp && !rv.tp.typed ? fmt(rv.tp.v, 1) + ' (lido)' : '';
+    c.abElsewhere = AUTOAB.some(a => rv[a.k]) ? [] : blocks.filter(b => AUTOAB.some(a => b.values[a.k])).map(b => fmtDate(b.date));
     const shorts = [], usedKeys = new Set(), counts = {};
     for (const sc of SCORES) {
       let out, used = '';
@@ -674,7 +832,7 @@ const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | 
       } else {
         const miss = missingOf(sc, v, c);
         out = miss.length ? { missing: miss } : sc.calc(v, c);
-        used = usedLine(sc.needs.filter(k => BYK[k]).concat(sc.id === 'meld' ? ['na', 'alb'] : sc.id === 'hai' ? ['fa', 'alt'] : []), rv);
+        used = usedLine(sc.needs.filter(k => BYK[k]).concat(sc.id === 'meld' ? ['na', 'alb'] : sc.id === 'hai' ? ['fa', 'alt', 'igg', ...AUTOAB.map(a => a.k)] : []), rv);
       }
       const card = $('card-' + sc.id), o = $('out-' + sc.id);
       if (out.missing) {
@@ -692,16 +850,16 @@ const EXAMPLE = `- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, PQT 156 | 
     const carriedAny = [...usedKeys].some(k => rv[k] && rv[k].carried);
     $('summary').textContent = shorts.length ? `${shorts.join(' | ')} (exames de ${fmtDate(sel.date)}${carriedAny ? ', alguns de datas anteriores' : ''})` : 'Nenhum escore calculado ainda.';
 
-    const rows = ANALYTES.filter(a => rv[a.k]).map(a => {
+    const rows = ALLK.filter(a => rv[a.k]).map(a => {
       const x = rv[a.k];
       const origem = x.typed ? 'digitado' : x.carried ? `de ${fmtDate(x.from.date)}` : x.gaso ? 'gasometria' : 'nesta data';
-      return `<tr class="${x.carried ? 'carry' : ''}"><td>${a.name}</td><td class="num">${fmt(x.v)} ${a.unit}</td><td>${origem}</td><td class="num">${esc(x.raw)}</td></tr>`;
+      return `<tr class="${x.carried ? 'carry' : ''}"><td>${a.name}</td><td class="num">${a.ab ? abText(x.v) : `${fmt(x.v)} ${a.unit}`}</td><td>${origem}</td><td class="num">${esc(x.raw)}</td></tr>`;
     });
     $('valsTable').innerHTML = `<thead><tr><th>Exame</th><th>Valor usado</th><th>Origem</th><th>Texto lido</th></tr></thead><tbody>${rows.join('')}</tbody>`;
     const w = sel.warnings;
     $('warnings').innerHTML = w.length ? `<div class="warnbox">Confira:<ul>${w.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : '';
-    const usedA = ANALYTES.filter(a => blocks.some(b => b.values[a.k]));
-    $('allTable').innerHTML = `<thead><tr><th>Exame</th>${blocks.map(b => `<th>${fmtDate(b.date)}</th>`).join('')}</tr></thead><tbody>${usedA.map(a => `<tr><td>${a.lab}</td>${blocks.map(b => `<td class="num">${b.values[a.k] ? fmt(b.values[a.k].v) : ''}</td>`).join('')}</tr>`).join('')}</tbody>`;
+    const usedA = ALLK.filter(a => blocks.some(b => b.values[a.k]));
+    $('allTable').innerHTML = `<thead><tr><th>Exame</th>${blocks.map(b => `<th>${fmtDate(b.date)}</th>`).join('')}</tr></thead><tbody>${usedA.map(a => `<tr><td>${a.lab}</td>${blocks.map(b => `<td class="num">${b.values[a.k] ? (a.ab ? esc(abText(b.values[a.k].v)) : fmt(b.values[a.k].v)) : ''}</td>`).join('')}</tr>`).join('')}</tbody>`;
   }
 
   ta.addEventListener('input', () => { if (isExample) { isExample = false; $('exampleTag').hidden = true; } userPickedDate = false; reparse(); });
