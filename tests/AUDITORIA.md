@@ -53,6 +53,12 @@ Escolha nossa, não do artigo: FAN "não reagente" conta como < 1/40 (0), que é
 
 Testes (`tests/rodar.js`): referência escrita da tabela do artigo (`haiTitulo`, `haiGlobulinas` em `tests/referencia.js`); 3.000 laudos sorteados em vários formatos de escrita (nomes, separadores, títulos 1/20 a 1/2560, títulos fora da tabela, negativos com e sem limite, IgG em mg/dL e g/L, sorologias IgG no meio); 31 laudos escritos à mão, incluindo os casos ambíguos e armadilhas ("Asma", "Ana Maria", "VDRL 1/16", "IgG4"); e o escore inteiro conferido com a referência quando os itens vêm dos exames.
 
+## Revisão de 05/11/2026: Child-Pugh e MELD-Na diferentes do MDCalc
+
+João viu Child-Pugh e MELD-Na diferentes do MDCalc num paciente real. As fórmulas foram conferidas de novo e não mudaram: Child-Pugh pelos cortes de Pugh et al., Br J Surg 1973 (bilirrubina < 2, 2 a 3, > 3 mg/dL; albumina > 3,5, 2,8 a 3,5, < 2,8 g/dL; INR < 1,7, 1,7 a 2,3, > 2,3, os mesmos do MDCalc); MELD-Na pela OPTN Policy 9.1.D (MELD(i) arredondado; correção pelo sódio só se MELD(i) > 11; sódio entre 125 e 137; creatinina máx. 4,0 ou 4,0 se diálise). A calculadora do MDCalc ([MELD Na (UNOS/OPTN)](https://www.mdcalc.com/calc/10437/meld-na-unos-optn)) segue a mesma regra.
+
+O problema achado foi no leitor de exames: ele não reconhecia "Creatinina sérica 1,2", "Sódio sérico 132", "Albumina, soro: 3,2", "Na+ 132", "Creat.: 1,2" nem "Na - 132". Faltando o valor, o app usava o de um exame de até 7 dias antes, e o escore saía diferente. Além disso, "Clearance de creatinina 18" era lido como creatinina 18. Corrigido; os casos estão em `tests/rodar.js` ("Leitor (laudos por extenso)").
+
 ## Limites desta auditoria
 
 - A referência foi escrita pela mesma ferramenta que escreveu o app, só que separada e a partir das fontes. Um erro de leitura da fonte repetido nos dois passaria despercebido. Por isso vale conferir à mão, uma vez, alguns casos de cada escore no MDCalc ou na planilha do serviço.
