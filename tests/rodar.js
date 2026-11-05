@@ -134,6 +134,26 @@ for (let i = 0; i < N; i++) {
   check('Hepatite autoimune', hA.value === hr && hA.pill === `HAI ${hFaixa}`, `${caso} ${JSON.stringify(h)} app ${hA.value} ref ${hr}`);
 }
 
+/* ===== Leitor: nomes por extenso como vêm nos laudos (revisão de 05/11/2026) ===== */
+// Antes, "Creatinina sérica 1,2", "Na+ 132" e "Creat.: 1,2" não eram lidos, e o app usava
+// o valor de um exame anterior, o que dava MELD-Na e Child-Pugh diferentes do MDCalc.
+const LAUDOS_EXT = [
+  ['Creatinina sérica 1,2 Sódio sérico 132 Albumina sérica 3,0 Bilirrubina total 2,5 INR 1,5', { cr: 1.2, na: 132, alb: 3.0, bt: 2.5, inr: 1.5 }],
+  ['BT 2,5 (BD 1,2 BI 1,3) Na+ 132 K+ 4 Cr 1,2 Alb 3,0 INR 1,5', { bt: 2.5, bd: 1.2, na: 132, k: 4, cr: 1.2, alb: 3.0, inr: 1.5 }],
+  ['Na: 132 mEq/L, Creat.: 1,2 mg/dL, TAP 60% INR 1,5', { na: 132, cr: 1.2, inr: 1.5 }],
+  ['Albumina, soro: 3,2 | Bilirrubina total sérica 2,1 | Sódio plasmático 129', { alb: 3.2, bt: 2.1, na: 129 }],
+  ['Na - 132 | K – 4,1 | Cr - 1,0', { na: 132, k: 4.1, cr: 1.0 }],
+  ['Sódio urinário 20 Creatinina urinária 80 Na 135', { na: 135 }],
+  ['Clearance de creatinina 18 Cr 1,5 ClCr 20', { cr: 1.5 }],
+  ['Depuração de creatinina 15 Creatinina 2,1', { cr: 2.1 }],
+];
+LAUDOS_EXT.forEach(([txt, esperado], i) => {
+  const bl = app.parseLabs(txt);
+  const lido = Object.fromEntries(Object.entries(bl[0].values).map(([k, x]) => [k, x.v]));
+  const chaves = new Set([...Object.keys(lido), ...Object.keys(esperado)]);
+  for (const k of chaves) check('Leitor (laudos por extenso)', lido[k] === esperado[k], `laudo ${i + 1}, ${k}: lido ${lido[k]} esperado ${esperado[k]}`);
+});
+
 /* ===== Leitor de exames: linhas reais coladas pelo João ===== */
 const REAIS = [
   ['- (30/09/2026): HB 11,30***, HT 32,80***, Leuco 5,8, Seg 44,00, Eos 2,40***, Baso 0,70***, Linf 39,50***, Mono 13,40***, PQT 156 | TGO 32, TGP 30, FA 275, GGT 191***, BT 1,16***, BD 0,38***, BI 0,78, INR 1,20 | PT 6,94, ALB 4,20 | Ur 27, Cr 0,94 | Na 138,0, K 4,5 | GLI 97 | CT 149 | Vit D 20,3 | ferro 130, ferritina 247,00, B12 468',
